@@ -26,7 +26,6 @@ def init_db():
 def save_to_db(data):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # 既に同じIDがあれば更新、なければ挿入
     c.execute("SELECT id FROM history WHERE id=?", (data['id'],))
     if c.fetchone():
         c.execute("UPDATE history SET rating=?, action=? WHERE id=?", (data['rating'], data['action'], data['id']))
@@ -51,7 +50,7 @@ def load_from_db():
         })
     return history_list
 
-init_db() # 起動時にDB初期化
+init_db()
 
 # ==========================================
 # 🎨 カラー・画像データ
@@ -71,28 +70,29 @@ STYLES = {
 }
 
 # ==========================================
-# 💅 動的CSSの生成 (ボタンを画像/色ブロックに変換)
+# 💅 動的CSS生成 (ボタンの画像化ハック)
 # ==========================================
 dynamic_css = ""
 
-# フロントページ
+# フロントページ用
 dynamic_css += """
-button:has(p:contains('FRONT_SOFA')) { background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url('https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; }
-button:has(p:contains('FRONT_SOFA')) p { color: transparent !important; font-size: 0px !important; }
-button:has(p:contains('FRONT_SOFA'))::after { content: 'SOFA'; color: white; font-size: 24px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+div[data-testid="element-container"]:has(.marker-front-sofa) + div[data-testid="element-container"] button { background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url('https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; position: relative !important; }
+div[data-testid="element-container"]:has(.marker-front-sofa) + div[data-testid="element-container"] button p { display: none !important; }
+div[data-testid="element-container"]:has(.marker-front-sofa) + div[data-testid="element-container"] button::after { content: 'SOFA'; color: white; font-size: 24px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 
-button:has(p:contains('FRONT_DINING')) { background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; cursor: default !important; }
-button:has(p:contains('FRONT_DINING')) p { color: transparent !important; font-size: 0px !important; }
-button:has(p:contains('FRONT_DINING'))::after { content: 'Coming Soon\\A DINING'; white-space: pre; text-align: center; color: white; font-size: 20px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+div[data-testid="element-container"]:has(.marker-front-dining) + div[data-testid="element-container"] button { background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; cursor: default !important; position: relative !important; }
+div[data-testid="element-container"]:has(.marker-front-dining) + div[data-testid="element-container"] button p { display: none !important; }
+div[data-testid="element-container"]:has(.marker-front-dining) + div[data-testid="element-container"] button::after { content: 'Coming Soon\\A DINING'; white-space: pre; text-align: center; color: white; font-size: 20px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 """
 
-# 色ブロック
+# 素材・内装用の色ブロック
 def add_color_css(prefix, color_dict):
     css = ""
     for name, hexcode in color_dict.items():
         css += f"""
-        button:has(p:contains('{prefix}_{name}')) {{ background-color: {hexcode} !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 12px !important; border: 1px solid #e5e5ea !important; padding: 0 !important; box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important; }}
-        button:has(p:contains('{prefix}_{name}')) p {{ color: transparent !important; font-size: 0px !important; }}
+        div[data-testid="element-container"]:has(.marker-{prefix}-{name}) + div[data-testid="element-container"] button {{ background-color: {hexcode} !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px solid #e5e5ea !important; padding: 0 !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.03) !important; position: relative !important; overflow: visible !important; }}
+        div[data-testid="element-container"]:has(.marker-{prefix}-{name}) + div[data-testid="element-container"] button p {{ display: none !important; }}
+        div[data-testid="element-container"]:has(.marker-{prefix}-{name}) + div[data-testid="element-container"] button::after {{ content: '{name}'; position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #515154; white-space: nowrap; font-weight: normal; }}
         """
     return css
 
@@ -102,11 +102,12 @@ dynamic_css += add_color_css("WD", COLORS_WOOD)
 dynamic_css += add_color_css("MT", COLORS_METAL)
 dynamic_css += add_color_css("IN", COLORS_INT)
 
-# テイスト画像
+# テイスト画像用のブロック
 for name, url in STYLES.items():
     dynamic_css += f"""
-    button:has(p:contains('ST_{name}')) {{ background: url('{url}') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; padding: 0 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.1) !important; }}
-    button:has(p:contains('ST_{name}')) p {{ color: transparent !important; font-size: 0px !important; }}
+    div[data-testid="element-container"]:has(.marker-ST-{name}) + div[data-testid="element-container"] button {{ background: url('{url}') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 12px !important; border: none !important; padding: 0 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.1) !important; position: relative !important; overflow: visible !important; }}
+    div[data-testid="element-container"]:has(.marker-ST-{name}) + div[data-testid="element-container"] button p {{ display: none !important; }}
+    div[data-testid="element-container"]:has(.marker-ST-{name}) + div[data-testid="element-container"] button::after {{ content: '{name}'; position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #515154; white-space: nowrap; font-weight: normal; }}
     """
 
 # --- ベースCSS ---
@@ -122,24 +123,21 @@ st.markdown(f"""
     [data-testid="stFileUploadDropzone"] div div span {{ display: none; }}
     [data-testid="stFileUploadDropzone"] small {{ display: none; }}
     
-    /* 生成ボタン */
+    /* 生成ボタン (ブルーを廃止しダークグレーへ) */
     button[kind="primary"] {{ background-color: #1d1d1f !important; color: #ffffff !important; border: none !important; border-radius: 24px !important; padding: 14px 24px !important; font-size: 16px !important; font-weight: 600 !important; transition: transform 0.2s ease; }}
     button[kind="primary"]:hover {{ opacity: 0.8; transform: scale(1.02); }}
 
-    /* 通常・戻るボタン（グレー系） */
+    /* 通常・戻るボタン */
     button[kind="secondary"]:not(:has(p:contains('_'))) {{ border-radius: 12px !important; border: 1px solid #d2d2d7 !important; background-color: #ffffff !important; color: #1d1d1f !important; font-weight: 500 !important; }}
     
-    /* スライダー（スワイプバー）をグレーに */
+    /* スワイプバー（スライダー）の色をグレーに */
     div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTrack"] > div:first-child {{ background-color: #86868b !important; }}
     div[data-testid="stSlider"] div[data-baseweb="slider"] div[role="slider"] {{ background-color: #1d1d1f !important; border-color: #1d1d1f !important; }}
 
     hr {{ margin: 40px 0; border-color: #e5e5ea; }}
     .section-title {{ font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 12px; margin-top: 32px; }}
     .helper-text {{ font-size: 13px; color: #86868b; margin-top: -10px; margin-bottom: 24px; }}
-    .select-prompt {{ font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 16px; margin-top: 8px; }}
-    
-    /* アイコン下の文字（小さく中央寄せ） */
-    .icon-label {{ font-size: 11px; color: #515154; text-align: center; margin-top: 4px; line-height: 1.2; word-break: keep-all; }}
+    .select-prompt {{ font-size: 14px; font-weight: 500; color: #515154; margin-bottom: 12px; margin-top: 8px; }}
 </style>
 {dynamic_css}
 """, unsafe_allow_html=True)
@@ -198,17 +196,18 @@ def go_to(page_name):
 # --- UI部品関数 (1/4サイズ グリッド) ---
 def render_grid(options_dict, prefix, state_key):
     items = list(options_dict.items())
-    # 1/4サイズにするため、1行に4列
+    # 1/4サイズ（4列配置）
     for i in range(0, len(items), 4):
         cols = st.columns(4)
         for j in range(4):
             if i + j < len(items):
                 name, val = items[i + j]
                 with cols[j]:
+                    st.markdown(f'<div class="marker-{prefix}-{name}" style="display:none;"></div>', unsafe_allow_html=True)
                     if st.button(f"{prefix}_{name}", key=f"btn_{prefix}_{name}"):
                         st.session_state[state_key] = {"name": name, "val": val, "type": "preset"}
                         st.rerun()
-                    st.markdown(f"<div class='icon-label'>{name}</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='height: 32px;'></div>", unsafe_allow_html=True) # 文字用スペース
 
 def render_selected(label, selection, state_key):
     st.markdown(f"<div class='section-title'>{label}</div>", unsafe_allow_html=True)
@@ -220,7 +219,7 @@ def render_selected(label, selection, state_key):
             else:
                 st.markdown(f'<div style="background-color:{selection["val"]}; width:100%; aspect-ratio:1/1; border-radius:8px; border:1px solid #e5e5ea;"></div>', unsafe_allow_html=True)
         else:
-            st.markdown(f'<div style="background-color:#f5f5f7; width:100%; aspect-ratio:1/1; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#86868b;">独自画像</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background-color:#f5f5f7; width:100%; aspect-ratio:1/1; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#86868b; border:1px solid #e5e5ea;">独自画像</div>', unsafe_allow_html=True)
     with c2:
         st.markdown(f"<p style='font-size:14px; margin-top:8px;'>{selection['name']}</p>", unsafe_allow_html=True)
     with c3:
@@ -238,8 +237,10 @@ if st.session_state.page == 'front':
     
     col1, col2 = st.columns(2)
     with col1:
+        st.markdown('<div class="marker-front-sofa" style="display:none;"></div>', unsafe_allow_html=True)
         if st.button("FRONT_SOFA", key="f_sofa"): go_to('sofa')
     with col2:
+        st.markdown('<div class="marker-front-dining" style="display:none;"></div>', unsafe_allow_html=True)
         st.button("FRONT_DINING", key="f_dining", disabled=True)
     
     st.divider()
@@ -266,7 +267,7 @@ elif st.session_state.page == 'sofa':
         with t1: render_grid(COLORS_FABRIC, "FB", "fabric")
         with t2: render_grid(COLORS_LEATHER, "LT", "fabric")
         st.write("")
-        up_fab = st.file_uploader("または独自の画像をアップロード (張地)", type=["jpg", "png"], key="ufab", label_visibility="collapsed")
+        up_fab = st.file_uploader("独自の画像をアップロード (張地)", type=["jpg", "png"], key="ufab", label_visibility="collapsed")
         if up_fab:
             st.session_state.fabric = {"name": "独自アップロード画像", "val": up_fab, "type": "upload"}
             st.session_state.up_fab = pil_to_b64(Image.open(up_fab))
@@ -282,7 +283,7 @@ elif st.session_state.page == 'sofa':
         with t3: render_grid(COLORS_WOOD, "WD", "frame")
         with t4: render_grid(COLORS_METAL, "MT", "frame")
         st.write("")
-        up_frm = st.file_uploader("または独自の画像をアップロード (フレーム)", type=["jpg", "png"], key="ufrm", label_visibility="collapsed")
+        up_frm = st.file_uploader("独自の画像をアップロード (フレーム)", type=["jpg", "png"], key="ufrm", label_visibility="collapsed")
         if up_frm:
             st.session_state.frame = {"name": "独自アップロード画像", "val": up_frm, "type": "upload"}
             st.session_state.up_frame = pil_to_b64(Image.open(up_frm))
@@ -295,7 +296,19 @@ elif st.session_state.page == 'sofa':
     # --- 空間 ---
     if not st.session_state.style:
         st.markdown("<div class='section-title'>空間テイスト</div>", unsafe_allow_html=True)
-        render_grid(STYLES, "ST", "style")
+        # スタイル画像も1/4配置
+        items = list(STYLES.items())
+        for i in range(0, len(items), 4):
+            cols = st.columns(4)
+            for j in range(4):
+                if i + j < len(items):
+                    name, url = items[i + j]
+                    with cols[j]:
+                        st.markdown(f'<div class="marker-ST-{name}" style="display:none;"></div>', unsafe_allow_html=True)
+                        if st.button(f"ST_{name}", key=f"style_{name}"):
+                            st.session_state.style = {"name": name, "url": url, "type": "style"}
+                            st.rerun()
+                        st.markdown("<div style='height: 32px;'></div>", unsafe_allow_html=True)
     else:
         render_selected("空間テイスト", st.session_state.style, "style")
 
@@ -303,21 +316,21 @@ elif st.session_state.page == 'sofa':
 
     # --- 内装 ---
     if not st.session_state.floor:
-        st.markdown("<div class='select-prompt'>床</div>", unsafe_allow_html=True)
+        st.markdown("<div class='select-prompt'>床を選択</div>", unsafe_allow_html=True)
         render_grid(COLORS_INT, "IN", "floor")
     else:
         render_selected("床", st.session_state.floor, "floor")
 
     if st.session_state.floor:
         if not st.session_state.wall:
-            st.markdown("<div class='select-prompt'>壁</div>", unsafe_allow_html=True)
+            st.markdown("<div class='select-prompt'>壁を選択</div>", unsafe_allow_html=True)
             render_grid(COLORS_INT, "IN", "wall")
         else:
             render_selected("壁", st.session_state.wall, "wall")
 
     if st.session_state.wall:
         if not st.session_state.fitting:
-            st.markdown("<div class='select-prompt'>建具</div>", unsafe_allow_html=True)
+            st.markdown("<div class='select-prompt'>建具を選択</div>", unsafe_allow_html=True)
             render_grid(COLORS_INT, "IN", "fitting")
         else:
             render_selected("建具", st.session_state.fitting, "fitting")
@@ -371,14 +384,17 @@ elif st.session_state.page == 'sofa':
                                 
                     if gen_img:
                         final_img = crop_to_4_3_and_watermark(gen_img)
-                        st.session_state.gallery.append({
+                        new_log = {
                             "id": str(time.time()),
                             "timestamp": time.time(),
                             "base_img_b64": pil_to_b64(main_img.copy()), 
                             "gen_img_b64": pil_to_b64(final_img),
                             "desc": f"{style_p} / 張地:{fab_p} / フレーム:{frame_p}",
                             "rating": 0, "action": "閲覧のみ"
-                        })
+                        }
+                        st.session_state.gallery.append(new_log)
+                        # 生成された直後もDBに仮保存（スマホから離脱しても残るように）
+                        save_to_db(new_log)
                     else:
                         st.error("生成に失敗しました。")
                 except Exception as e:
@@ -405,6 +421,7 @@ elif st.session_state.page == 'sofa':
             st.write("")
             st.markdown("<p style='text-align:center; font-weight:600; font-size:14px;'>画像を評価すると保存や再作成出来ます</p>", unsafe_allow_html=True)
             
+            # 初期選択なしにするため index=None
             rating = st.radio("評価", [1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key=f"rate_{res['id']}")
             
             if rating is not None:
@@ -437,31 +454,33 @@ elif st.session_state.page == 'admin':
     
     if pw == "hotta-admin":
         st.write("")
-        history_data = load_from_db() # 常に最新のDBから読み込む
+        # 常に最新のDBから読み込む（スマホからのデータ同期）
+        history_data = load_from_db()
         
         if not history_data:
-            st.markdown("<p style='color: #86868b;'>保存または再作成されたデータはありません。</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #86868b;'>保存されたデータはありません。</p>", unsafe_allow_html=True)
         else:
             st.write(f"記録数: {len(history_data)}件")
             for log in reversed(history_data):
-                # 評価されたもののみ表示
-                if log['rating'] > 0:
-                    st.markdown("<div style='padding: 24px; background-color: #ffffff; border: 1px solid #e5e5ea; border-radius: 16px; margin-bottom: 24px;'>", unsafe_allow_html=True)
-                    
-                    img_col1, img_col2 = st.columns(2)
-                    with img_col1:
-                        st.markdown("<p style='font-size:12px; color:#86868b; margin-bottom:4px;'>ベース画像</p>", unsafe_allow_html=True)
-                        st.image(b64_to_pil(log["base_img_b64"]), use_container_width=True)
-                    with img_col2:
-                        st.markdown("<p style='font-size:12px; color:#86868b; margin-bottom:4px;'>生成結果</p>", unsafe_allow_html=True)
-                        st.image(b64_to_pil(log["gen_img_b64"]), use_container_width=True)
-                    
-                    st.write("")
-                    st.markdown(f"<span style='font-weight:600;'>設定詳細:</span> {log['desc']}", unsafe_allow_html=True)
-                    st.markdown(f"<span style='font-weight:600;'>評価:</span> {log['rating']} / 5", unsafe_allow_html=True)
-                    st.markdown(f"<span style='font-weight:600;'>アクション:</span> {log['action']}", unsafe_allow_html=True)
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
+                # 評価が行われたもの、またはアクションがあるものを表示
+                st.markdown("<div style='padding: 24px; background-color: #ffffff; border: 1px solid #e5e5ea; border-radius: 16px; margin-bottom: 24px;'>", unsafe_allow_html=True)
+                
+                img_col1, img_col2 = st.columns(2)
+                with img_col1:
+                    st.markdown("<p style='font-size:12px; color:#86868b; margin-bottom:4px;'>ベース画像</p>", unsafe_allow_html=True)
+                    st.image(b64_to_pil(log["base_img_b64"]), use_container_width=True)
+                with img_col2:
+                    st.markdown("<p style='font-size:12px; color:#86868b; margin-bottom:4px;'>生成結果</p>", unsafe_allow_html=True)
+                    st.image(b64_to_pil(log["gen_img_b64"]), use_container_width=True)
+                
+                st.write("")
+                st.markdown(f"<span style='font-weight:600;'>設定詳細:</span> {log['desc']}", unsafe_allow_html=True)
+                # 評価0の場合は「未評価」と表示
+                rating_disp = f"{log['rating']} / 5" if log['rating'] > 0 else "未評価"
+                st.markdown(f"<span style='font-weight:600;'>評価:</span> {rating_disp}", unsafe_allow_html=True)
+                st.markdown(f"<span style='font-weight:600;'>アクション:</span> {log['action']}", unsafe_allow_html=True)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
     elif pw:
         st.error("パスワードが違います。")
         
