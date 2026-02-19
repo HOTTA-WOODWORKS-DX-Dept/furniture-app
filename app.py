@@ -82,7 +82,7 @@ if submitted:
             vertex_mask_img = VertexImage(image_bytes=mask_bytes)
 
             # モデルのロード (Imagen 2)
-            model = ImageGenerationModel.from_pretrained("imagegeneration@006")
+            model = ImageGenerationModel.from_pretrained("imagegeneration@005")
 
             status_container.info("🎨 画像を描画中... (20〜40秒ほどかかります)")
 
