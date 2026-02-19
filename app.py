@@ -1,10 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import io
+import urllib.parse
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Furniture Coordinator Pro", layout="wide")
+st.set_page_config(page_title="Furniture Coordinator 2.0", layout="wide")
 
 st.markdown("""
 <style>
@@ -13,8 +13,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛋️ 家具コーディネートAI (Pro Edition)")
-st.caption("Powered by Gemini 3 Pro Image Preview")
+st.title("🛋️ 家具コーディネートAI (Gemini 2.0)")
+st.caption("Powered by Gemini 2.0 Flash (Vision) + AI Image Generator")
 
 # --- APIキー設定 ---
 try:
@@ -24,9 +24,9 @@ except:
     st.error("⚠️ APIキーが設定されていません。StreamlitのSecrets設定を行ってください。")
     st.stop()
 
-# --- モデル設定（リストにあった最新のProモデルを使用） ---
-# 画像生成に特化したGemini 3 Proのプレビュー版を指定
-MODEL_NAME = 'models/gemini-3-pro-image-preview'
+# --- モデル設定（確実に動くGemini 2.0 Flashを使用） ---
+# このモデルは画像を「見る」能力が非常に高いです
+MODEL_NAME = 'gemini-2.0-flash'
 
 @st.cache_resource
 def get_model():
@@ -37,13 +37,6 @@ try:
 except Exception as e:
     st.error(f"モデルの読み込みに失敗しました: {e}")
     st.stop()
-
-# --- サイドバー：履歴・管理者（ダミー） ---
-with st.sidebar:
-    st.header("📜 生成履歴")
-    st.info("ここに過去の生成履歴が表示されます")
-    st.divider()
-    st.caption(f"使用モデル: {MODEL_NAME}")
 
 # --- メインエリア ---
 col1, col2 = st.columns([1, 1.2])
@@ -70,7 +63,7 @@ with col1:
         
     # ④ 木部・サブカラー（任意）
     st.write("▼ 木部・脚の色（任意）")
-    wood_color = st.selectbox("木部の色を選択", ["指定なし", "ナチュラルオーク", "ウォールナット（濃茶）", "ブラック", "ホワイト", "真鍮・ゴールド"])
+    wood_color = st.selectbox("木部の色を選択", ["元のまま", "ナチュラルオーク", "ウォールナット（濃茶）", "ブラック", "ホワイト", "真鍮・ゴールド"])
 
 # 【右カラム】設定と生成エリア
 with col2:
@@ -91,7 +84,7 @@ with col2:
 
     # ⑦ 生成実行
     st.divider()
-    generate_btn = st.button("✨ 画像を生成する (Gemini 3 Pro)", type="primary")
+    generate_btn = st.button("✨ 画像を生成する", type="primary")
 
 # --- 生成ロジック ---
 if generate_btn:
@@ -102,85 +95,62 @@ if generate_btn:
         status_bar = st.progress(0)
         
         try:
-            # プロンプトの構築
-            prompt = f"""
-            You are an expert interior designer and AI image generator.
-            Generate a photorealistic image based on the input image and instructions.
+            # 1. Gemini 2.0 Flash に「画像を見てプロンプトを書かせる」
+            status_text.info("👀 Gemini 2.0 が家具と生地を観察中...")
+            
+            prompt_instruction = f"""
+            You are an expert interior designer.
+            Look at the input images and create a detailed English image generation prompt to visualize the final scene.
 
-            # Input Image
-            - The first image provided is the reference furniture ({furniture_type}).
-            - Keep the shape and design of this furniture exactly as it is.
+            # Input Images
+            1. The first image is the main furniture ({furniture_type}).
+            2. (Optional) The second image is the fabric/texture to be applied to the furniture.
 
-            # Instructions
-            - Place this furniture in a {style} style {room_type}.
-            - Floor & Wall context: {floor_wall}.
-            - Lighting: Professional interior photography lighting, soft natural light.
-            - Composition: Wide angle shot showing the room context.
+            # Task
+            Describe the scene where this furniture is placed in a {style} style {room_type}.
+            
+            # Details to include in the prompt:
+            - **Furniture:** Describe the furniture shape based on the first image.
+            - **Material:** If the second image exists, describe its color and texture (e.g., velvet, linen, leather) and apply it to the furniture.
+            - **Wood Color:** The legs/frame should be {wood_color}.
+            - **Room Context:** {floor_wall}.
+            - **Lighting & Vibe:** Photorealistic, 8k, interior design magazine quality, cinematic lighting.
+            
+            Output ONLY the English prompt. No explanations.
             """
             
-            inputs = [prompt, furniture_img]
-
-            # 生地の指定がある場合
+            inputs = [prompt_instruction, furniture_img]
             if fabric_img:
-                inputs[0] += "\n- Apply the texture and color of the second image (fabric) to the upholstery of the furniture."
                 inputs.append(fabric_img)
             
-            # 木部の指定がある場合
-            if wood_color != "指定なし":
-                inputs[0] += f"\n- Change the wood/leg parts color to {wood_color}."
-
-            inputs[0] += "\n- Ensure high quality, realistic textures and shadows."
-
-            status_text.info("🚀 Gemini 3 Pro が画像生成を開始しました... (30〜60秒かかります)")
-            status_bar.progress(30)
-
-            # API呼び出し
+            # Gemini実行
             response = model.generate_content(inputs)
+            generated_prompt = response.text
             
-            status_bar.progress(80)
-            status_text.info("🎨 画像を処理中...")
+            status_bar.progress(50)
+            status_text.info("🎨 画像を描画中...")
+            print(f"Prompt: {generated_prompt}") # デバッグ用
 
-            # 画像の取り出しと表示
-            # Gemini 3 Pro Image Previewは、response.partsに画像データを含んで返すか、
-            # まれにURLを返す場合があります。両方に対応できるように記述します。
+            # 2. 生成されたプロンプトを使って画像を表示 (Pollinations API)
+            # URLエンコード（文字をURLで使える形式に変換）
+            encoded_prompt = urllib.parse.quote(generated_prompt[:400]) # 長すぎるとエラーになるので調整
             
-            try:
-                # パターンA: 画像データが直接返ってくる場合
-                if hasattr(response, 'parts') and response.parts:
-                    for part in response.parts:
-                        if hasattr(part, 'image'):
-                            # 画像データを表示
-                            st.image(part.image, caption="Generated by Gemini 3 Pro", use_container_width=True)
-                            st.balloons()
-                            status_text.success("生成完了！")
-                            break
-                        elif hasattr(part, 'inline_data'):
-                            # バイナリデータの場合
-                            image_bytes = part.inline_data.data
-                            img = Image.open(io.BytesIO(image_bytes))
-                            st.image(img, caption="Generated by Gemini 3 Pro", use_container_width=True)
-                            st.balloons()
-                            status_text.success("生成完了！")
-                            break
-                # パターンB: 通常のテキストとしてURL等が返る場合（念のため）
-                elif response.text:
-                    st.write(response.text)
-                    status_text.success("生成完了（テキスト応答）")
-                else:
-                    st.error("画像データが見つかりませんでした。")
-                    
-            except Exception as inner_e:
-                # 念のためresponse全体を表示してデバッグできるようにする
-                st.error(f"画像の表示中にエラー: {inner_e}")
-                st.write(response)
-
+            # 画像URLを作成（ここが画像生成エンジンになります）
+            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=768&nologo=true&seed=123&model=flux"
+            
+            # 表示
+            st.image(image_url, caption=f"Generated: {style} style {room_type}", use_container_width=True)
+            
             status_bar.progress(100)
-
+            status_text.success("生成完了！")
+            
+            with st.expander("AIが作成した指示書（プロンプト）を見る"):
+                st.write(generated_prompt)
+                
             # ⑧ いいねボタン
             if st.button("❤️ 結果に満足"):
                 st.toast("フィードバックを保存しました！")
 
         except Exception as e:
-            st.error(f"生成エラー: {e}")
-            st.warning("ヒント: 画像生成モデルは、安全フィルターにより生成が拒否されることがあります。別の角度の写真で試してみてください。")
-            
+            st.error(f"エラーが発生しました: {e}")
+            st.warning("ヒント: 一時的な通信エラーの可能性があります。もう一度ボタンを押してみてください。")
