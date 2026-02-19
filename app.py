@@ -5,63 +5,89 @@ import urllib.parse
 import time
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Furniture AI Pro", layout="wide")
+st.set_page_config(page_title="Furniture AI Coordinator", layout="wide")
 
-st.title("🛋️ 家具コーディネートAI (Paid Edition)")
-st.caption("Gemini 1.5 Pro / 2.0 Flash - 高速・高品質モード")
+st.markdown("""
+<style>
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; padding: 0.8em; background-color: #0068C9; color: white; }
+    .main-img { border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🛋️ 家具コーディネートAI")
+st.caption("Gemini 2026 Edition - 堀田木工所 DX事業部プロトタイプ")
 
 # --- APIキー設定 ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
 except:
-    st.error("SecretsにAPIキーを設定してください。")
+    st.error("⚠️ SecretsにAPIキーを設定してください。")
     st.stop()
 
-# 有料プランなら 'gemini-1.5-pro' が最も高品質でおすすめです
-MODEL_NAME = 'gemini-1.5-pro'
+# --- モデル設定（安定版を使用） ---
+MODEL_NAME = 'models/gemini-flash-latest'
 model = genai.GenerativeModel(MODEL_NAME)
 
-# --- 画面構成 ---
-col1, col2 = st.columns([1, 1])
+# --- メインエリア ---
+col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    st.subheader("1. 素材アップロード")
-    f_file = st.file_uploader("家具の写真", type=["jpg", "jpeg", "png"])
-    if f_file:
-        # 1033対策：表示用に画像をリサイズして軽くする
-        img = Image.open(f_file)
-        img.thumbnail((800, 800)) 
-        st.image(img, use_container_width=True)
+    st.subheader("1. 家具・素材の登録")
+    furniture_file = st.file_uploader("家具の写真（スマホで撮影）", type=["jpg", "png", "jpeg"])
+    fabric_file = st.file_uploader("生地の写真（任意）", type=["jpg", "png", "jpeg"])
+    
+    if furniture_file:
+        st.image(Image.open(furniture_file), caption="解析対象の家具", use_container_width=True)
 
 with col2:
-    st.subheader("2. デザイン設定")
-    room = st.selectbox("部屋", ["リビングルーム", "ダイニング", "寝室"])
-    style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "和モダン"])
+    st.subheader("2. 空間デザイン設定")
+    room = st.selectbox("配置する部屋", ["リビングルーム", "ダイニング", "ベッドルーム", "子供部屋", "書斎"])
+    style = st.selectbox("デザインテイスト", ["北欧モダン", "ヴィンテージ", "インダストリアル", "和モダン", "シンプル"])
     
-    if st.button("✨ 高品質画像を生成", type="primary"):
-        if f_file:
-            with st.spinner("有料APIで高速解析中..."):
+    st.divider()
+    if st.button("✨ この設定で画像を生成する"):
+        if not furniture_file:
+            st.warning("家具の写真をアップロードしてください。")
+        else:
+            with st.spinner("AIが空間をデザインしています..."):
                 try:
-                    # 解析
-                    img = Image.open(f_file)
-                    # 1033対策：APIに送る画像も少し軽くする
-                    img.thumbnail((1024, 1024))
+                    # 1. Geminiにプロンプトを作成させる
+                    img = Image.open(furniture_file)
+                    prompt_text = f"この家具のデザインを忠実に再現し、{style}な{room}に配置した高品質なインテリア写真のプロンプトを英語で作成してください。出力はプロンプトのみ。説明不要。"
                     
-                    prompt = f"Keep the shape of this furniture and place it in a {style} style {room}. Photorealistic, 8k, interior design magazine style. Output only one English prompt."
+                    content = [prompt_text, img]
+                    if fabric_file:
+                        content.append(Image.open(fabric_file))
                     
-                    response = model.generate_content([prompt, img])
-                    clean_prompt = response.text.replace('\n', ' ').strip()
+                    response = model.generate_content(content)
+                    # プロンプトを整理（改行などを消してURLを壊さないようにする）
+                    eng_prompt = response.text.replace('\n', ' ').strip()
                     
-                    # 画像生成
-                    safe_prompt = urllib.parse.quote(clean_prompt[:400])
-                    # 有料級のクオリティを出すためにFluxモデルを明示
-                    img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
+                    # 2. 画像生成エンジンへ送信
+                    # 安全のために長さを制限し、URLエンコードする
+                    safe_prompt = urllib.parse.quote(eng_prompt[:400])
+                    # 画像URLを生成（seedをランダムにして毎回違う画像にする）
+                    random_seed = int(time.time())
+                    image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=768&nologo=true&seed={random_seed}&model=flux"
                     
-                    st.image(img_url, caption="生成結果", use_container_width=True)
-                    st.success("生成が完了しました！")
+                    # 3. 結果の表示
+                    st.subheader("🖼️ 生成されたコーディネート案")
+                    # 画像本体を表示
+                    st.image(image_url, caption=f"{style}スタイルの提案", use_container_width=True)
+                    
+                    # 万が一、ブラウザの制限で画像が表示されない時用のバックアップリンク
+                    st.markdown(f"🔗 [画像をフルサイズで開く]({image_url})")
+                    
+                    st.success("コーディネートが完成しました！")
+                    
+                    with st.expander("AIによるコーディネートの解説（英文プロンプト）"):
+                        st.write(eng_prompt)
+                        
+                    # ⑧ いいねボタン
+                    if st.button("❤️ このコーディネートを保存"):
+                        st.toast("お気に入り登録しました！")
                     
                 except Exception as e:
-                    st.error(f"エラー: {e}")
-        else:
-            st.warning("画像をアップロードしてください")
+                    st.error(f"生成中にエラーが発生しました。時間を置いて再度お試しください。")
+                    st.caption(f"Error detail: {e}")
