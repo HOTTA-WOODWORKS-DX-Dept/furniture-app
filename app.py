@@ -64,7 +64,7 @@ except:
 # --- セッション状態 ---
 if 'page' not in st.session_state: st.session_state.page = 'front'
 if 'history' not in st.session_state: st.session_state.history = []
-if 'gallery' not in st.session_state: st.session_state.gallery = [] # 再生成の履歴用
+if 'gallery' not in st.session_state: st.session_state.gallery = [] 
 if 'auto_gen' not in st.session_state: st.session_state.auto_gen = False
 
 # 選択状態の管理
@@ -94,7 +94,8 @@ STYLES = {
 }
 
 # --- UI部品関数 ---
-def render_color_grid(options_dict, state_key):
+# 【修正箇所】 unique_id を追加して、同じ色名でもエラーが出ないようにしました
+def render_color_grid(options_dict, state_key, unique_id):
     items = list(options_dict.items())
     for i in range(0, len(items), 5):
         cols = st.columns(5)
@@ -103,7 +104,7 @@ def render_color_grid(options_dict, state_key):
                 name, color = items[i + j]
                 with cols[j]:
                     st.markdown(f'<div style="background-color:{color}; width:100%; aspect-ratio:1/1; border-radius:12px; border:1px solid #d2d2d7; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom:8px;"></div>', unsafe_allow_html=True)
-                    if st.button(name, key=f"{state_key}_{name}", use_container_width=True):
+                    if st.button(name, key=f"{state_key}_{unique_id}_{name}", use_container_width=True):
                         st.session_state[state_key] = name
                         st.rerun()
 
@@ -119,7 +120,6 @@ def render_style_grid():
 
 # --- 画像処理関数 ---
 def crop_to_4_3_and_watermark(img):
-    # 4:3にクロップ
     w, h = img.size
     target_ratio = 4 / 3
     current_ratio = w / h
@@ -132,20 +132,17 @@ def crop_to_4_3_and_watermark(img):
         top = (h - new_h) / 2
         img = img.crop((0, top, w, top + new_h))
     
-    # 透かしの追加
     draw = ImageDraw.Draw(img)
     text = "HOTTA WOODWORKS-DX"
     try:
-        font = ImageFont.truetype("LiberationSans-Regular.ttf", int(img.height * 0.03)) # 画像の3%の大きさ
+        font = ImageFont.truetype("LiberationSans-Regular.ttf", int(img.height * 0.03)) 
     except:
         font = ImageFont.load_default()
     
-    # テキストサイズを取得して右下に配置
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x, y = img.width - tw - 20, img.height - th - 20
     
-    # 影と文字を描画して視認性を高める
     draw.text((x+2, y+2), text, font=font, fill=(0,0,0,150))
     draw.text((x, y), text, font=font, fill=(255,255,255,220))
     return img
@@ -185,21 +182,19 @@ elif st.session_state.page == 'sofa':
     
     st.markdown("<h2>家具の設定</h2>", unsafe_allow_html=True)
     
-    # --- ベース画像 ---
     f_file = st.file_uploader("ベースとなる家具画像をアップロード", type=["jpg", "png", "jpeg"])
     if f_file: st.image(f_file, width=150)
     
     st.divider()
 
-    # --- 素材（張地・フレーム） ---
     st.markdown("<h3>素材</h3>", unsafe_allow_html=True)
     
-    # 張地
     st.markdown("**張地（布・革）**")
     if not st.session_state.fabric:
         t_col1, t_col2 = st.tabs(["布 (10色)", "革 (5色)"])
-        with t_col1: render_color_grid(COLORS_FABRIC, "fabric")
-        with t_col2: render_color_grid(COLORS_LEATHER, "fabric")
+        # 第3引数に一意なID(fab, lea)を渡すことでエラーを回避
+        with t_col1: render_color_grid(COLORS_FABRIC, "fabric", "fab")
+        with t_col2: render_color_grid(COLORS_LEATHER, "fabric", "lea")
     else:
         st.success(f"✓ 張地: {st.session_state.fabric}")
         if st.button("張地を変更", key="change_fab"):
@@ -208,12 +203,11 @@ elif st.session_state.page == 'sofa':
 
     st.write("")
     
-    # フレーム
     st.markdown("**フレーム（木材・金属）**")
     if not st.session_state.frame:
         t_col3, t_col4 = st.tabs(["木材 (8色)", "金属 (5色)"])
-        with t_col3: render_color_grid(COLORS_WOOD, "frame")
-        with t_col4: render_color_grid(COLORS_METAL, "frame")
+        with t_col3: render_color_grid(COLORS_WOOD, "frame", "wood")
+        with t_col4: render_color_grid(COLORS_METAL, "frame", "metal")
     else:
         st.success(f"✓ フレーム: {st.session_state.frame}")
         if st.button("フレームを変更", key="change_frame"):
@@ -222,7 +216,6 @@ elif st.session_state.page == 'sofa':
 
     st.divider()
 
-    # --- 空間設定（テイスト・床・壁・建具） ---
     st.markdown("<h3>空間</h3>", unsafe_allow_html=True)
     
     st.markdown("**テイスト**")
@@ -236,13 +229,11 @@ elif st.session_state.page == 'sofa':
 
     st.write("")
 
-    # アコーディオン（連動型展開）
     st.markdown("**内装**")
     
-    # 床
     if not st.session_state.floor:
         st.caption("床を選択してください")
-        render_color_grid(COLORS_INT, "floor")
+        render_color_grid(COLORS_INT, "floor", "fl")
     else:
         st.success(f"✓ 床: {st.session_state.floor}")
         if st.button("床を変更", key="ch_fl"):
@@ -251,11 +242,10 @@ elif st.session_state.page == 'sofa':
             st.session_state.fitting = None
             st.rerun()
 
-    # 壁 (床が選ばれたら表示)
     if st.session_state.floor:
         if not st.session_state.wall:
             st.caption("壁を選択してください")
-            render_color_grid(COLORS_INT, "wall")
+            render_color_grid(COLORS_INT, "wall", "wa")
         else:
             st.success(f"✓ 壁: {st.session_state.wall}")
             if st.button("壁を変更", key="ch_wa"):
@@ -263,11 +253,10 @@ elif st.session_state.page == 'sofa':
                 st.session_state.fitting = None
                 st.rerun()
 
-    # 建具 (壁が選ばれたら表示)
     if st.session_state.wall:
         if not st.session_state.fitting:
             st.caption("建具を選択してください")
-            render_color_grid(COLORS_INT, "fitting")
+            render_color_grid(COLORS_INT, "fitting", "fi")
         else:
             st.success(f"✓ 建具: {st.session_state.fitting}")
             if st.button("建具を変更", key="ch_fi"):
@@ -276,10 +265,8 @@ elif st.session_state.page == 'sofa':
 
     st.divider()
 
-    # --- ボタンエリア ---
     c_btn1, c_btn2 = st.columns(2)
     with c_btn1:
-        # すべて選択されていなくても生成は可能（未選択はAIにお任せ）
         gen_clicked = st.button("画像を生成する", type="primary", use_container_width=True)
     with c_btn2:
         if st.button("設定をリセット", use_container_width=True):
@@ -287,7 +274,6 @@ elif st.session_state.page == 'sofa':
 
     should_generate = gen_clicked or st.session_state.auto_gen
 
-    # --- 画像生成処理 ---
     if should_generate:
         st.session_state.auto_gen = False
         if not f_file:
@@ -325,10 +311,8 @@ elif st.session_state.page == 'sofa':
                                 gen_img = part
                                 
                     if gen_img:
-                        # 画像のクロップと透かし入れ
                         final_img = crop_to_4_3_and_watermark(gen_img)
                         
-                        # ギャラリーに追加
                         st.session_state.gallery.append({
                             "id": str(time.time()),
                             "image": final_img,
@@ -340,21 +324,17 @@ elif st.session_state.page == 'sofa':
                 except Exception as e:
                     st.error(f"エラー: {e}")
 
-    # --- ギャラリー（スワイプ閲覧）と評価エリア ---
     if st.session_state.gallery:
         st.divider()
         st.markdown("<h2>生成結果</h2>", unsafe_allow_html=True)
         
-        # スワイプ（スライダー）機能
         total_imgs = len(st.session_state.gallery)
         current_idx = 0
         if total_imgs > 1:
-            # 最新のものが右（最大値）になるように
             current_idx = st.slider("スワイプして過去の履歴を見る", 1, total_imgs, total_imgs) - 1
             
         res = st.session_state.gallery[current_idx]
         
-        # 中央に画像を表示
         c_img1, c_img2, c_img3 = st.columns([1, 4, 1])
         with c_img2:
             st.image(res["image"], use_container_width=True, caption=res["desc"])
@@ -362,7 +342,6 @@ elif st.session_state.page == 'sofa':
             st.write("")
             st.markdown("<p style='text-align:center; font-weight:bold;'>画像を評価すると保存や再作成出来ます</p>", unsafe_allow_html=True)
             
-            # 評価ボタン（画面中央）
             rating = st.radio("評価", [1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key=f"rate_{res['id']}")
             
             if rating is not None:
@@ -373,7 +352,6 @@ elif st.session_state.page == 'sofa':
                     buf = io.BytesIO()
                     res["image"].save(buf, format="PNG")
                     if st.download_button("💾 画像を保存", data=buf.getvalue(), file_name=f"room_ai_{int(time.time())}.png", mime="image/png", use_container_width=True):
-                        # 管理者ログに保存
                         log_data = res.copy()
                         log_data["action"] = "保存"
                         st.session_state.history.append(log_data)
