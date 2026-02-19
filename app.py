@@ -1,51 +1,54 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 import time
 
-# --- ページ設定 (Appleライクなミニマル設定) ---
+# --- ページ設定 ---
 st.set_page_config(page_title="Room AI Studio", layout="centered", initial_sidebar_state="collapsed")
 
-# --- 洗練されたカスタムCSS ---
+# --- 洗練されたApple風フォントとCSS ---
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@300;400;500&display=swap');
-    
+    /* ヒラギノ角ゴとSF Proをベースにした洗練された書体 */
     html, body, [class*="css"] {
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
         color: #1d1d1f;
-        background-color: #fbfbfd;
+        background-color: #f5f5f7;
     }
     
-    /* 見出しのスタイル */
-    h1, h2, h3, h4 { font-weight: 500; letter-spacing: -0.5px; }
-    h1 { font-size: 40px; text-align: center; margin-bottom: 40px; }
+    h1, h2, h3, h4 { font-weight: 600; letter-spacing: -0.02em; }
     
-    /* ボタンのApple風スタイリング */
+    /* 生成ボタンのハイライト（目立たせる） */
+    [data-testid="baseButton-primary"] {
+        background-color: #0071e3 !important; 
+        color: #ffffff !important; 
+        border: none !important;
+        border-radius: 24px !important;
+        padding: 12px 24px !important;
+        font-size: 18px !important;
+        font-weight: bold !important;
+        box-shadow: 0 4px 10px rgba(0, 113, 227, 0.3) !important;
+        transition: all 0.3s ease;
+    }
+    [data-testid="baseButton-primary"]:hover {
+        transform: scale(1.02);
+        background-color: #0077ED !important;
+    }
+
+    /* 通常のボタン */
     .stButton>button {
-        border-radius: 8px;
-        font-weight: 400;
-        transition: all 0.2s ease;
+        border-radius: 12px;
         border: 1px solid #d2d2d7;
         background-color: #ffffff;
         color: #1d1d1f;
-        padding: 10px 20px;
     }
-    .stButton>button:hover { background-color: #f5f5f7; border-color: #86868b; }
-    
-    /* プライマリボタン（生成など） */
-    [data-testid="baseButton-primary"] { background-color: #1d1d1f; color: #ffffff; border: none; }
-    [data-testid="baseButton-primary"]:hover { background-color: #424245; }
-    
-    /* 区切り線 */
-    hr { margin: 40px 0; border-color: #e5e5ea; }
     
     /* 画像の角丸 */
-    img { border-radius: 8px; }
+    img { border-radius: 16px; }
     
-    /* 選択肢（Radio）のクリーン化 */
-    div[role="radiogroup"] > label { margin-right: 15px; font-weight: 400; }
+    /* 区切り線 */
+    hr { margin: 30px 0; border-color: #e5e5ea; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -55,164 +58,262 @@ try:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('models/gemini-3-pro-image-preview')
 except:
-    st.error("API Error: Please check your configuration.")
+    st.error("API設定を確認してください。")
     st.stop()
 
-# --- セッション状態の管理 ---
+# --- セッション状態 ---
 if 'page' not in st.session_state: st.session_state.page = 'front'
 if 'history' not in st.session_state: st.session_state.history = []
-if 'current_result' not in st.session_state: st.session_state.current_result = None
-if 'auto_generate' not in st.session_state: st.session_state.auto_generate = False
+if 'gallery' not in st.session_state: st.session_state.gallery = [] # 再生成の履歴用
+if 'auto_gen' not in st.session_state: st.session_state.auto_gen = False
+
+# 選択状態の管理
+for k in ['fabric', 'frame', 'style', 'floor', 'wall', 'fitting']:
+    if k not in st.session_state: st.session_state[k] = None
 
 def go_to(page_name):
     st.session_state.page = page_name
-    st.session_state.current_result = None
-    st.session_state.auto_generate = False
+    st.session_state.gallery = []
+    for k in ['fabric', 'frame', 'style', 'floor', 'wall', 'fitting']:
+        st.session_state[k] = None
     st.rerun()
 
-# --- 素材・カラーリスト ---
-COLORS_FABRIC = ["オフホワイト", "ベージュ", "ライトグレー", "ミディアムグレー", "チャコールグレー", "ブラック", "ネイビー", "オリーブグリーン", "マスタード", "テラコッタ"]
-COLORS_LEATHER = ["ブラック", "ダークブラウン", "キャメル", "アイボリー", "バーガンディ"]
-COLORS_WOOD = ["ナチュラルオーク", "ホワイトアッシュ", "ウォールナット", "チェリー", "チーク", "マホガニー", "ブラックアッシュ", "ホワイトウォッシュ"]
-COLORS_METAL = ["シルバー", "ステンレス", "真鍮(ブラス)", "コッパー(銅)", "マットブラック"]
-COLORS_INTERIOR = ["ピュアホワイト", "アイボリー", "ライトグレー", "ダークグレー", "ナチュラルウッド", "ダークウッド", "コンクリート", "ブラック", "ネイビー", "アクセントクロス"]
+# --- カラーと画像の定義 ---
+COLORS_FABRIC = {"ホワイト":"#F8F8F8", "アイボリー":"#FFFFF0", "ベージュ":"#F5F5DC", "ライトグレー":"#D3D3D3", "ダークグレー":"#696969", "ブラック":"#202020", "ネイビー":"#191970", "グリーン":"#556B2F", "マスタード":"#FFDB58", "テラコッタ":"#E2725B"}
+COLORS_LEATHER = {"ブラック":"#1A1A1A", "ブラウン":"#5C4033", "キャメル":"#C19A6B", "アイボリー":"#FAF0E6", "ワイン":"#722F37"}
+COLORS_WOOD = {"ナチュラルオーク":"#D2B48C", "ホワイトアッシュ":"#F5DEB3", "ウォールナット":"#5C4033", "チェリー":"#D2691E", "チーク":"#CD853F", "マホガニー":"#C04000", "ブラック":"#1A1A1A", "ホワイト":"#F8F8FF"}
+COLORS_METAL = {"シルバー":"#C0C0C0", "ステンレス":"#B0C4DE", "真鍮":"#B5A642", "銅":"#B87333", "マットブラック":"#2F4F4F"}
+COLORS_INT = {"ホワイト":"#FFFFFF", "アイボリー":"#FFFFF0", "ベージュ":"#F5F5DC", "ライトオーク":"#DEB887", "ウォールナット":"#5C4033", "ダークブラウン":"#3E2723", "ライトグレー":"#D3D3D3", "ダークグレー":"#696969", "ブラック":"#1C1C1C", "アクセントブルー":"#2C3E50"}
+
+STYLES = {
+    "北欧ナチュラル": "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&q=60&w=300",
+    "モダン": "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&q=60&w=300",
+    "ヴィンテージ": "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&q=60&w=300",
+    "和風": "https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&q=60&w=300",
+    "コンテンポラリー": "https://images.unsplash.com/photo-1600607686527-6fb886090705?auto=format&fit=crop&q=60&w=300"
+}
+
+# --- UI部品関数 ---
+def render_color_grid(options_dict, state_key):
+    items = list(options_dict.items())
+    for i in range(0, len(items), 5):
+        cols = st.columns(5)
+        for j in range(5):
+            if i + j < len(items):
+                name, color = items[i + j]
+                with cols[j]:
+                    st.markdown(f'<div style="background-color:{color}; width:100%; aspect-ratio:1/1; border-radius:12px; border:1px solid #d2d2d7; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom:8px;"></div>', unsafe_allow_html=True)
+                    if st.button(name, key=f"{state_key}_{name}", use_container_width=True):
+                        st.session_state[state_key] = name
+                        st.rerun()
+
+def render_style_grid():
+    items = list(STYLES.items())
+    cols = st.columns(5)
+    for i, (name, url) in enumerate(items):
+        with cols[i]:
+            st.markdown(f'<div style="background-image:url({url}); background-size:cover; background-position:center; width:100%; aspect-ratio:1/1; border-radius:12px; margin-bottom:8px;"></div>', unsafe_allow_html=True)
+            if st.button(name, key=f"style_{name}", use_container_width=True):
+                st.session_state.style = name
+                st.rerun()
+
+# --- 画像処理関数 ---
+def crop_to_4_3_and_watermark(img):
+    # 4:3にクロップ
+    w, h = img.size
+    target_ratio = 4 / 3
+    current_ratio = w / h
+    if current_ratio > target_ratio:
+        new_w = int(h * target_ratio)
+        left = (w - new_w) / 2
+        img = img.crop((left, 0, left + new_w, h))
+    elif current_ratio < target_ratio:
+        new_h = int(w / target_ratio)
+        top = (h - new_h) / 2
+        img = img.crop((0, top, w, top + new_h))
+    
+    # 透かしの追加
+    draw = ImageDraw.Draw(img)
+    text = "HOTTA WOODWORKS-DX"
+    try:
+        font = ImageFont.truetype("LiberationSans-Regular.ttf", int(img.height * 0.03)) # 画像の3%の大きさ
+    except:
+        font = ImageFont.load_default()
+    
+    # テキストサイズを取得して右下に配置
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x, y = img.width - tw - 20, img.height - th - 20
+    
+    # 影と文字を描画して視認性を高める
+    draw.text((x+2, y+2), text, font=font, fill=(0,0,0,150))
+    draw.text((x, y), text, font=font, fill=(255,255,255,220))
+    return img
 
 # ==========================================
-# 1. フロントページ
+# 🏠 1. フロントページ
 # ==========================================
 if st.session_state.page == 'front':
-    st.markdown("<h1>Room AI Studio</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #86868b; margin-bottom: 40px;'>Select a category to begin.</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-top: 40px;'>Room AI Studio</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#86868b; margin-bottom:40px;'>家具のカテゴリーを選択してください</p>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.image("https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500", caption="Sofa", use_container_width=True)
-        if st.button("Configure Sofa", use_container_width=True, type="primary"):
+        st.image("https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500", caption="ソファ", use_container_width=True)
+        if st.button("ソファを選択", use_container_width=True, type="primary"):
             go_to('sofa')
             
     with col2:
-        st.image("https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500", caption="Dining Table", use_container_width=True)
-        st.button("Coming Soon", use_container_width=True, disabled=True)
+        st.markdown("""
+        <div style='position:relative; text-align:center; color:white;'>
+            <img src='https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500' style='width:100%; border-radius:16px; opacity:0.6;'>
+            <div style='position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:24px; font-weight:bold; color:#1d1d1f; text-shadow: 0 0 10px white;'>Coming Soon</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.caption("ダイニングテーブル")
     
     st.divider()
     col_admin, _ = st.columns([1, 3])
     with col_admin:
-        if st.button("Admin Console", use_container_width=True):
-            go_to('admin')
+        if st.button("管理者画面"): go_to('admin')
 
 # ==========================================
-# 2. コンフィギュレーター画面 (Sofa)
+# 🛋️ 2. ソファ・コーディネート画面
 # ==========================================
 elif st.session_state.page == 'sofa':
-    if st.button("Back"): go_to('front')
+    if st.button("← 戻る"): go_to('front')
     
-    st.markdown("<h2 style='margin-bottom: 30px;'>Sofa Configuration</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>家具の設定</h2>", unsafe_allow_html=True)
     
-    # 1. ベース画像
-    st.markdown("#### Base Image")
-    f_file = st.file_uploader("Upload base sofa image", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
+    # --- ベース画像 ---
+    f_file = st.file_uploader("ベースとなる家具画像をアップロード", type=["jpg", "png", "jpeg"])
     if f_file: st.image(f_file, width=150)
     
     st.divider()
 
-    # 2. 素材設定
-    st.markdown("#### Materials")
+    # --- 素材（張地・フレーム） ---
+    st.markdown("<h3>素材</h3>", unsafe_allow_html=True)
     
     # 張地
-    st.write("Upholstery (張地)")
-    mat_type = st.radio("Type", ["Fabric", "Leather", "Custom Image"], horizontal=True, label_visibility="collapsed")
-    fab_desc = ""
-    if mat_type == "Fabric":
-        fab_desc = st.selectbox("Color", COLORS_FABRIC, label_visibility="collapsed") + " Fabric"
-    elif mat_type == "Leather":
-        fab_desc = st.selectbox("Color", COLORS_LEATHER, label_visibility="collapsed") + " Leather"
+    st.markdown("**張地（布・革）**")
+    if not st.session_state.fabric:
+        t_col1, t_col2 = st.tabs(["布 (10色)", "革 (5色)"])
+        with t_col1: render_color_grid(COLORS_FABRIC, "fabric")
+        with t_col2: render_color_grid(COLORS_LEATHER, "fabric")
     else:
-        fabric_file = st.file_uploader("Upload custom fabric", type=["jpg", "png"], label_visibility="collapsed")
-        if fabric_file: st.image(fabric_file, width=80)
-        fab_desc = "uploaded custom fabric"
-        
+        st.success(f"✓ 張地: {st.session_state.fabric}")
+        if st.button("張地を変更", key="change_fab"):
+            st.session_state.fabric = None
+            st.rerun()
+
     st.write("")
     
     # フレーム
-    st.write("Frame (フレーム)")
-    frame_type = st.radio("Type", ["Wood", "Metal", "Custom Image"], horizontal=True, key="ft", label_visibility="collapsed")
-    frame_desc = ""
-    if frame_type == "Wood":
-        frame_desc = st.selectbox("Color", COLORS_WOOD, key="fw", label_visibility="collapsed") + " Wood"
-    elif frame_type == "Metal":
-        frame_desc = st.selectbox("Color", COLORS_METAL, key="fm", label_visibility="collapsed") + " Metal"
+    st.markdown("**フレーム（木材・金属）**")
+    if not st.session_state.frame:
+        t_col3, t_col4 = st.tabs(["木材 (8色)", "金属 (5色)"])
+        with t_col3: render_color_grid(COLORS_WOOD, "frame")
+        with t_col4: render_color_grid(COLORS_METAL, "frame")
     else:
-        frame_file = st.file_uploader("Upload custom frame", type=["jpg", "png"], key="fu", label_visibility="collapsed")
-        if frame_file: st.image(frame_file, width=80)
-        frame_desc = "uploaded custom frame"
+        st.success(f"✓ フレーム: {st.session_state.frame}")
+        if st.button("フレームを変更", key="change_frame"):
+            st.session_state.frame = None
+            st.rerun()
 
     st.divider()
 
-    # 3. 空間設定
-    st.markdown("#### Environment")
+    # --- 空間設定（テイスト・床・壁・建具） ---
+    st.markdown("<h3>空間</h3>", unsafe_allow_html=True)
     
-    st.write("Style (テイスト)")
-    # スタイルの画像プレビュー（シミュレーション用）
-    style_cols = st.columns(5)
-    style_names = ["北欧ナチュラル", "モダン", "ヴィンテージ", "和風", "コンテンポラリー"]
-    style_urls = [
-        "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&q=60&w=200",
-        "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&q=60&w=200",
-        "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&q=60&w=200",
-        "https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&q=60&w=200",
-        "https://images.unsplash.com/photo-1600607686527-6fb886090705?auto=format&fit=crop&q=60&w=200"
-    ]
-    for i, col in enumerate(style_cols):
-        with col:
-            st.image(style_urls[i], use_container_width=True)
-    
-    style = st.radio("Select Style", style_names, horizontal=True, label_visibility="collapsed")
-    
-    st.write("")
-    col_int1, col_int2, col_int3 = st.columns(3)
-    with col_int1:
-        floor = st.selectbox("Floor (床)", COLORS_INTERIOR, index=4)
-    with col_int2:
-        wall = st.selectbox("Wall (壁)", COLORS_INTERIOR, index=0)
-    with col_int3:
-        fitting = st.selectbox("Fittings (建具)", COLORS_INTERIOR, index=4)
+    st.markdown("**テイスト**")
+    if not st.session_state.style:
+        render_style_grid()
+    else:
+        st.success(f"✓ テイスト: {st.session_state.style}")
+        if st.button("テイストを変更", key="change_style"):
+            st.session_state.style = None
+            st.rerun()
 
     st.write("")
-    st.write("")
+
+    # アコーディオン（連動型展開）
+    st.markdown("**内装**")
     
-    # 実行トリガーの判定（ボタン押下 or リトライフラグ）
-    generate_clicked = st.button("Generate Image", type="primary", use_container_width=True)
-    if st.button("Reset Settings", use_container_width=True):
-        go_to('sofa')
-        
-    should_generate = generate_clicked or st.session_state.auto_generate
+    # 床
+    if not st.session_state.floor:
+        st.caption("床を選択してください")
+        render_color_grid(COLORS_INT, "floor")
+    else:
+        st.success(f"✓ 床: {st.session_state.floor}")
+        if st.button("床を変更", key="ch_fl"):
+            st.session_state.floor = None
+            st.session_state.wall = None
+            st.session_state.fitting = None
+            st.rerun()
+
+    # 壁 (床が選ばれたら表示)
+    if st.session_state.floor:
+        if not st.session_state.wall:
+            st.caption("壁を選択してください")
+            render_color_grid(COLORS_INT, "wall")
+        else:
+            st.success(f"✓ 壁: {st.session_state.wall}")
+            if st.button("壁を変更", key="ch_wa"):
+                st.session_state.wall = None
+                st.session_state.fitting = None
+                st.rerun()
+
+    # 建具 (壁が選ばれたら表示)
+    if st.session_state.wall:
+        if not st.session_state.fitting:
+            st.caption("建具を選択してください")
+            render_color_grid(COLORS_INT, "fitting")
+        else:
+            st.success(f"✓ 建具: {st.session_state.fitting}")
+            if st.button("建具を変更", key="ch_fi"):
+                st.session_state.fitting = None
+                st.rerun()
+
+    st.divider()
+
+    # --- ボタンエリア ---
+    c_btn1, c_btn2 = st.columns(2)
+    with c_btn1:
+        # すべて選択されていなくても生成は可能（未選択はAIにお任せ）
+        gen_clicked = st.button("画像を生成する", type="primary", use_container_width=True)
+    with c_btn2:
+        if st.button("設定をリセット", use_container_width=True):
+            go_to('sofa')
+
+    should_generate = gen_clicked or st.session_state.auto_gen
 
     # --- 画像生成処理 ---
     if should_generate:
-        st.session_state.auto_generate = False # 実行後はフラグを戻す
-        
+        st.session_state.auto_gen = False
         if not f_file:
-            st.error("Base image is required.")
+            st.error("ベースとなる画像をアップロードしてください。")
         else:
-            with st.spinner("Processing image..."):
+            with st.spinner("AIが空間を構築しています..."):
                 try:
                     main_img = Image.open(f_file)
                     
+                    fab_p = st.session_state.fabric or "appropriate color"
+                    frame_p = st.session_state.frame or "appropriate material"
+                    style_p = st.session_state.style or "modern"
+                    floor_p = st.session_state.floor or "matching"
+                    wall_p = st.session_state.wall or "matching"
+                    fitting_p = st.session_state.fitting or "matching"
+                    
                     prompt = f"""
-                    GENERATE_IMAGE: Create a highly realistic, architectural digest style interior design photo.
-                    Main Subject: The sofa from the attached image. Maintain its exact shape and structure.
-                    Upholstery: {fab_desc}.
-                    Frame/Legs: {frame_desc}.
-                    Scene Style: {style} interior design.
-                    Background Details: {floor} floor, {wall} walls, {fitting} doors/fittings.
-                    Lighting: Natural, soft, cinematic lighting.
+                    GENERATE_IMAGE: Create a highly realistic, architectural digest style interior design photo. Aspect Ratio: 4:3.
+                    Furniture: The sofa from the attached image. Maintain exact shape.
+                    Upholstery: {fab_p}. Frame/Legs: {frame_p}.
+                    Style: {style_p} interior.
+                    Interior Details: Floor: {floor_p}, Walls: {wall_p}, Doors/Fittings: {fitting_p}.
+                    Lighting: Natural cinematic lighting.
                     """
                     
-                    inputs = [prompt, main_img]
-                    if mat_type == "Custom Image" and fabric_file: inputs.append(Image.open(fabric_file))
-                    if frame_type == "Custom Image" and frame_file: inputs.append(Image.open(frame_file))
-
-                    response = model.generate_content(inputs)
+                    response = model.generate_content([prompt, main_img])
                     
                     gen_img = None
                     if response.candidates:
@@ -224,90 +325,92 @@ elif st.session_state.page == 'sofa':
                                 gen_img = part
                                 
                     if gen_img:
-                        st.session_state.current_result = {
+                        # 画像のクロップと透かし入れ
+                        final_img = crop_to_4_3_and_watermark(gen_img)
+                        
+                        # ギャラリーに追加
+                        st.session_state.gallery.append({
                             "id": str(time.time()),
-                            "image": gen_img,
-                            "style": style,
-                            "fabric": fab_desc,
-                            "frame": frame_desc,
-                            "floor": floor,
-                            "wall": wall,
-                            "fitting": fitting,
-                            "rating": None, # 初期状態は未評価
-                            "saved": False,
-                            "regenerated": False
-                        }
+                            "image": final_img,
+                            "desc": f"{style_p} / 張地:{fab_p} / 床:{floor_p}",
+                            "rating": None
+                        })
                     else:
-                        st.error("Failed to generate image.")
+                        st.error("生成に失敗しました。")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"エラー: {e}")
 
-    # --- 生成結果 ---
-    if st.session_state.current_result:
+    # --- ギャラリー（スワイプ閲覧）と評価エリア ---
+    if st.session_state.gallery:
         st.divider()
-        res = st.session_state.current_result
+        st.markdown("<h2>生成結果</h2>", unsafe_allow_html=True)
         
-        col_img1, col_img2, col_img3 = st.columns([1, 4, 1])
-        with col_img2:
-            st.image(res["image"], use_container_width=True)
+        # スワイプ（スライダー）機能
+        total_imgs = len(st.session_state.gallery)
+        current_idx = 0
+        if total_imgs > 1:
+            # 最新のものが右（最大値）になるように
+            current_idx = st.slider("スワイプして過去の履歴を見る", 1, total_imgs, total_imgs) - 1
+            
+        res = st.session_state.gallery[current_idx]
+        
+        # 中央に画像を表示
+        c_img1, c_img2, c_img3 = st.columns([1, 4, 1])
+        with c_img2:
+            st.image(res["image"], use_container_width=True, caption=res["desc"])
             
             st.write("")
-            st.markdown("<p style='text-align:center; font-size:14px; color:#86868b;'>How would you rate this result?</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center; font-weight:bold;'>画像を評価すると保存や再作成出来ます</p>", unsafe_allow_html=True)
             
-            # 初期未選択状態の評価ラジオボタン
-            rating = st.radio("Rating", [1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed")
+            # 評価ボタン（画面中央）
+            rating = st.radio("評価", [1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key=f"rate_{res['id']}")
+            
             if rating is not None:
                 res["rating"] = rating
-            
-            st.write("")
-            col_act1, col_act2 = st.columns(2)
-            with col_act1:
-                # 端末依存せず確実にDL/保存できる標準機能
-                buf = io.BytesIO()
-                res["image"].save(buf, format="PNG")
-                if st.download_button("Save Image", data=buf.getvalue(), file_name="room_ai_studio.png", mime="image/png", use_container_width=True):
-                    res["saved"] = True
-                    st.session_state.history.append(res.copy())
-            
-            with col_act2:
-                if st.button("Retry", use_container_width=True):
-                    res["regenerated"] = True
-                    st.session_state.history.append(res.copy())
-                    st.session_state.auto_generate = True # 次のロードで自動生成
-                    st.rerun()
+                st.write("")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    buf = io.BytesIO()
+                    res["image"].save(buf, format="PNG")
+                    if st.download_button("💾 画像を保存", data=buf.getvalue(), file_name=f"room_ai_{int(time.time())}.png", mime="image/png", use_container_width=True):
+                        # 管理者ログに保存
+                        log_data = res.copy()
+                        log_data["action"] = "保存"
+                        st.session_state.history.append(log_data)
+                
+                with col_b:
+                    if st.button("🔄 再作成", use_container_width=True, key=f"retry_{res['id']}"):
+                        log_data = res.copy()
+                        log_data["action"] = "再作成"
+                        st.session_state.history.append(log_data)
+                        
+                        st.session_state.auto_gen = True
+                        st.rerun()
 
 # ==========================================
-# 3. 管理者コンソール
+# 🔒 3. 管理者画面
 # ==========================================
 elif st.session_state.page == 'admin':
-    if st.button("Back to Home"): go_to('front')
+    if st.button("← 戻る"): go_to('front')
     
-    st.markdown("<h2>Admin Console</h2>", unsafe_allow_html=True)
-    pw = st.text_input("Password", type="password")
+    st.markdown("<h2>管理者画面</h2>", unsafe_allow_html=True)
+    pw = st.text_input("パスワード", type="password")
     
     if pw == "hotta-admin":
         st.write("")
         if not st.session_state.history:
-            st.markdown("<p style='color: #86868b;'>No records found.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #86868b;'>保存または再作成されたデータはありません。</p>", unsafe_allow_html=True)
         else:
-            st.write(f"Total Records: {len(st.session_state.history)}")
-            for i, log in enumerate(reversed(st.session_state.history)):
-                st.markdown("<div style='padding: 20px; background-color: #ffffff; border: 1px solid #e5e5ea; border-radius: 12px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+            st.write(f"記録数: {len(st.session_state.history)}件")
+            for log in reversed(st.session_state.history):
+                st.markdown("<div style='padding: 20px; background-color: #ffffff; border: 1px solid #e5e5ea; border-radius: 16px; margin-bottom: 20px;'>", unsafe_allow_html=True)
                 c1, c2 = st.columns([1, 2])
                 with c1:
                     st.image(log["image"], use_container_width=True)
                 with c2:
-                    st.markdown(f"**Style:** {log['style']}")
-                    st.markdown(f"**Materials:** Upholstery ({log['fabric']}) / Frame ({log['frame']})")
-                    st.markdown(f"**Interior:** Floor ({log['floor']}) / Wall ({log['wall']}) / Fittings ({log['fitting']})")
-                    
-                    rating_display = f"{log['rating']}/5" if log['rating'] else "Unrated"
-                    st.markdown(f"**Rating:** {rating_display}")
-                    
-                    status = []
-                    if log['saved']: status.append("Saved")
-                    if log['regenerated']: status.append("Retried")
-                    st.markdown(f"**Status:** {' / '.join(status) if status else 'Previewed Only'}")
+                    st.write(f"**詳細:** {log['desc']}")
+                    st.write(f"**評価:** {'⭐' * log['rating']} ({log['rating']})")
+                    st.write(f"**アクション:** {log['action']}")
                 st.markdown("</div>", unsafe_allow_html=True)
     elif pw:
-        st.error("Incorrect password.")
+        st.error("パスワードが違います。")
