@@ -2,23 +2,14 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 import urllib.parse
-import io
 import time
+import re
 
 # --- ページ設定 ---
 st.set_page_config(page_title="Room AI Studio", layout="wide")
 
-# デザイン：堀田木工所様のDXツールらしい、清潔感のあるスタイル
-st.markdown("""
-<style>
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; height: 3.5em; background-color: #1E3A8A; color: white; }
-    .main-img { border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-    .stSelectbox label { font-weight: bold; }
-</style>
-""", unsafe_allow_html=True)
-
 st.title("🛋️ Room AI Studio")
-st.caption("AIが提案する、理想のインテリアコーディネート")
+st.caption("画像表示エラー対策済みバージョン")
 
 # --- APIキー設定 ---
 try:
@@ -28,87 +19,74 @@ except:
     st.error("⚠️ APIキーを設定してください。")
     st.stop()
 
-# --- 通信エラー対策：画像リサイズ関数 ---
+# --- モデル設定 ---
+MODEL_NAME = 'gemini-flash-latest'
+model = genai.GenerativeModel(MODEL_NAME)
+
+# --- 画像処理関数 ---
 def prepare_image(uploaded_file):
     if uploaded_file is None:
         return None
     img = Image.open(uploaded_file)
-    img.thumbnail((800, 800)) # 1033エラーを防ぐための軽量化
+    img.thumbnail((700, 700)) # 通信負荷を下げる
     return img
 
-# --- モデル設定（成功した 'gemini-flash-latest' を使用） ---
-MODEL_NAME = 'gemini-flash-latest'
-model = genai.GenerativeModel(MODEL_NAME)
-
-# --- 画面レイアウト ---
-col1, col2 = st.columns([1, 1.2])
+# --- メインエリア ---
+col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.subheader("1. 家具と素材を読み込む")
-    # 家具画像
     f_file = st.file_uploader("家具の写真をアップロード", type=["jpg", "jpeg", "png"])
     if f_file:
         st.image(prepare_image(f_file), caption="解析対象", use_container_width=True)
-    
-    # 生地・素材画像
-    fabric_file = st.file_uploader("生地・素材の写真（任意）", type=["jpg", "jpeg", "png"])
-    if fabric_file:
-        st.image(prepare_image(fabric_file), width=150, caption="適用する素材")
 
 with col2:
-    st.subheader("2. お部屋をコーディネート")
-    room = st.selectbox("配置する部屋", ["リビングルーム", "ダイニングルーム", "ベッドルーム", "書斎/オフィス", "子供部屋"])
-    style = st.selectbox("インテリアテイスト", ["北欧モダン", "ジャパンディ(和モダン)", "ヴィンテージ", "インダストリアル", "ラグジュアリー"])
+    room = st.selectbox("配置する部屋", ["リビング", "ダイニング", "寝室"])
+    style = st.selectbox("テイスト", ["北欧モダン", "ヴィンテージ", "和モダン"])
     
-    st.write("▼ 追加設定")
-    c1, c2 = st.columns(2)
-    with c1:
-        floor = st.selectbox("床材", ["ナチュラルオーク", "ウォールナット", "ホワイトタイル", "グレーコンクリート"])
-    with c2:
-        wall = st.selectbox("壁紙", ["プレーンホワイト", "ライトグレー", "ベージュ", "アクセントブルー"])
-
     st.divider()
-    generate_btn = st.button("✨ この設定でイメージを生成する")
+    generate_btn = st.button("✨ 画像を生成する", type="primary")
 
-# --- 生成処理 ---
+# --- 生成ロジック ---
 if generate_btn:
     if not f_file:
         st.warning("家具の写真をアップロードしてください。")
     else:
-        with st.spinner("AIが空間をデザイン中..."):
+        with st.spinner("AIがコーディネートを構築中..."):
             try:
-                # 1. Geminiに解析とプロンプト作成を依頼
+                # 1. Geminiに解析依頼
                 img = prepare_image(f_file)
-                prompt_msg = f"""
-                You are a professional interior designer. 
-                Analyze the furniture in the image and create an English image generation prompt.
-                Action: Place this furniture into a {style} {room}.
-                Context: {floor} floor, {wall} walls.
-                Instructions: Keep the furniture shape and color. Photorealistic, 8k, natural soft lighting.
-                Output ONLY the English prompt.
-                """
+                prompt_msg = f"Look at the furniture and create a short English prompt (under 50 words) for a photorealistic {style} {room} interior. Output ONLY the prompt text. No quotes, no intro."
                 
-                content = [prompt_msg, img]
-                if fabric_file:
-                    content.append(prepare_image(fabric_file))
+                response = model.generate_content([prompt_msg, img])
+                raw_prompt = response.text
                 
-                response = model.generate_content(content)
-                eng_prompt = response.text.replace('\n', ' ').strip()
+                # --- 【重要】プロンプトの「掃除」 ---
+                # 改行を消し、余計な記号を削除し、短くカットする
+                clean_prompt = raw_prompt.replace('\n', ' ').strip()
+                clean_prompt = re.sub(r'[^a-zA-Z0-9\s,.-]', '', clean_prompt) # 記号を掃除
+                clean_prompt = clean_prompt[:300] # 長すぎるとURLが壊れるのでカット
                 
-                # 2. 画像生成（Pollinations AI）
-                safe_prompt = urllib.parse.quote(eng_prompt[:400])
-                # 毎回違う結果にするためにseedに時間を使用
-                img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
+                # 2. 画像URLの構築
+                # 毎回異なる結果が出るよう、seedに現在時刻を使用
+                encoded_prompt = urllib.parse.quote(clean_prompt)
+                img_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
                 
-                # 3. 結果表示
+                # 3. 結果の表示
                 st.subheader("🖼️ 生成された提案イメージ")
-                st.image(img_url, use_container_width=True)
                 
-                st.success("コーディネートが完了しました！")
+                # 画像の表示テスト
+                image_placeholder = st.empty()
+                image_placeholder.image(img_url, use_container_width=True)
                 
-                with st.expander("AIによるデザイン解説（英文プロンプト）"):
-                    st.write(eng_prompt)
+                # バックアップ：もし画像が表示されない場合の直接リンク
+                st.markdown(f"""
+                ---
+                ✅ **コーディネートが完了しました！** ※画像が表示されない場合は、以下のリンクを直接クリックして確認してください。  
+                👉 [**ここをクリックして別タブで画像を開く**]({img_url})
+                """)
+                
+                with st.expander("AIの指示内容を確認"):
+                    st.write(f"生成に使用したプロンプト: {clean_prompt}")
 
             except Exception as e:
-                st.error(f"エラーが発生しました。時間を置いて再度お試しください。")
-                st.caption(f"Detail: {e}")
+                st.error(f"エラーが発生しました: {e}")
