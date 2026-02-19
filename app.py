@@ -151,7 +151,7 @@ def go_to(page_name):
         st.session_state[k] = None
     st.rerun()
 
-# --- 安全なUI部品関数 (エラーフリー版) ---
+# --- 安全なUI部品関数 ---
 def render_color_grid(options_dict, state_key):
     items = list(options_dict.items())
     for i in range(0, len(items), 4):
