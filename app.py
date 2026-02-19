@@ -203,4 +203,237 @@ def render_selected(label, selection, state_key):
 if st.session_state.page == 'front':
     st.markdown("<h1 style='margin-top: 40px;'>Room AI Studio</h1>", unsafe_allow_html=True)
     
-    col1, col
+    col1, col2 = st.columns(2)
+    with col1:
+        st.image("https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500&h=500", use_container_width=True)
+        if st.button("SOFA", use_container_width=True, type="primary"): go_to('sofa')
+    with col2:
+        st.image("https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500&h=500", use_container_width=True)
+        st.button("Coming Soon", use_container_width=True, disabled=True)
+    
+    st.divider()
+    col_admin, _ = st.columns([1, 2])
+    with col_admin:
+        if st.button("管理者画面", use_container_width=True): go_to('admin')
+
+# ==========================================
+# 🛋️ 2. ソファ・コーディネート画面
+# ==========================================
+elif st.session_state.page == 'sofa':
+    st.markdown("<h2>家具の設定</h2>", unsafe_allow_html=True)
+    st.markdown("<div class='helper-text'>ベースとなる家具の写真をアップロードし、各素材や空間のテイストを選択してください。</div>", unsafe_allow_html=True)
+    
+    f_file = st.file_uploader("ベース画像", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
+    if f_file: st.image(f_file, width=150)
+    
+    st.divider()
+
+    # --- 素材 ---
+    if not st.session_state.fabric:
+        st.markdown("<div class='section-title'>張地</div>", unsafe_allow_html=True)
+        t1, t2 = st.tabs(["布", "革"])
+        with t1: render_color_grid(COLORS_FABRIC, "fabric")
+        with t2: render_color_grid(COLORS_LEATHER, "fabric")
+        st.write("")
+        up_fab = st.file_uploader("独自の画像をアップロード (張地)", type=["jpg", "png"], key="ufab", label_visibility="collapsed")
+        if up_fab:
+            st.session_state.fabric = {"name": "独自アップロード画像", "val": up_fab, "type": "upload"}
+            st.session_state.up_fab = pil_to_b64(Image.open(up_fab))
+            st.rerun()
+    else:
+        render_selected("張地", st.session_state.fabric, "fabric")
+
+    st.write("")
+    
+    if not st.session_state.frame:
+        st.markdown("<div class='section-title'>フレーム</div>", unsafe_allow_html=True)
+        t3, t4 = st.tabs(["木材", "金属"])
+        with t3: render_color_grid(COLORS_WOOD, "frame")
+        with t4: render_color_grid(COLORS_METAL, "frame")
+        st.write("")
+        up_frm = st.file_uploader("独自の画像をアップロード (フレーム)", type=["jpg", "png"], key="ufrm", label_visibility="collapsed")
+        if up_frm:
+            st.session_state.frame = {"name": "独自アップロード画像", "val": up_frm, "type": "upload"}
+            st.session_state.up_frame = pil_to_b64(Image.open(up_frm))
+            st.rerun()
+    else:
+        render_selected("フレーム", st.session_state.frame, "frame")
+
+    st.divider()
+
+    # --- 空間 ---
+    if not st.session_state.style:
+        st.markdown("<div class='section-title'>空間テイスト</div>", unsafe_allow_html=True)
+        render_style_grid()
+    else:
+        render_selected("空間テイスト", st.session_state.style, "style")
+
+    st.write("")
+
+    # --- 内装 ---
+    if not st.session_state.floor:
+        st.markdown("<div class='section-title'>床</div>", unsafe_allow_html=True)
+        render_color_grid(COLORS_INT, "floor")
+    else:
+        render_selected("床", st.session_state.floor, "floor")
+
+    if st.session_state.floor:
+        if not st.session_state.wall:
+            st.markdown("<div class='section-title'>壁</div>", unsafe_allow_html=True)
+            render_color_grid(COLORS_INT, "wall")
+        else:
+            render_selected("壁", st.session_state.wall, "wall")
+
+    if st.session_state.wall:
+        if not st.session_state.fitting:
+            st.markdown("<div class='section-title'>建具</div>", unsafe_allow_html=True)
+            render_color_grid(COLORS_INT, "fitting")
+        else:
+            render_selected("建具", st.session_state.fitting, "fitting")
+
+    st.divider()
+
+    c_btn1, c_btn2 = st.columns(2)
+    with c_btn1:
+        gen_clicked = st.button("画像を生成", type="primary", use_container_width=True)
+    with c_btn2:
+        if st.button("設定をリセット", use_container_width=True): go_to('sofa')
+
+    if gen_clicked or st.session_state.auto_gen:
+        st.session_state.auto_gen = False
+        if not f_file:
+            st.error("ベース画像をアップロードしてください。")
+        else:
+            with st.spinner("AIで画像を生成しています..."):
+                try:
+                    main_img = Image.open(f_file)
+                    
+                    fab_p = st.session_state.fabric["name"] if st.session_state.fabric else "appropriate color"
+                    frame_p = st.session_state.frame["name"] if st.session_state.frame else "appropriate material"
+                    style_p = st.session_state.style["name"] if st.session_state.style else "modern"
+                    floor_p = st.session_state.floor["name"] if st.session_state.floor else "matching"
+                    wall_p = st.session_state.wall["name"] if st.session_state.wall else "matching"
+                    fitting_p = st.session_state.fitting["name"] if st.session_state.fitting else "matching"
+                    
+                    prompt = f"""
+                    GENERATE_IMAGE: Create a highly realistic interior design photo. Aspect Ratio: 4:3.
+                    Furniture: The sofa from the first attached image. Maintain exact shape.
+                    Upholstery: {fab_p}. Frame/Legs: {frame_p}.
+                    Style: {style_p} interior.
+                    Interior: Floor: {floor_p}, Walls: {wall_p}, Doors/Fittings: {fitting_p}.
+                    """
+                    
+                    inputs = [prompt, main_img]
+                    if st.session_state.up_fab: inputs.append(b64_to_pil(st.session_state.up_fab))
+                    if st.session_state.up_frame: inputs.append(b64_to_pil(st.session_state.up_frame))
+                    
+                    response = model.generate_content(inputs)
+                    
+                    gen_img = None
+                    if response.candidates:
+                        for part in response.candidates[0].content.parts:
+                            if hasattr(part, 'inline_data'):
+                                gen_img = Image.open(io.BytesIO(part.inline_data.data))
+                                break
+                            elif 'image' in str(type(part)):
+                                gen_img = part
+                                
+                    if gen_img:
+                        final_img = crop_to_4_3_and_watermark(gen_img)
+                        new_log = {
+                            "id": str(time.time()),
+                            "timestamp": time.time(),
+                            "base_img_b64": pil_to_b64(main_img.copy()), 
+                            "gen_img_b64": pil_to_b64(final_img),
+                            "desc": f"{style_p} / 張地:{fab_p} / フレーム:{frame_p}",
+                            "rating": 0, "action": "閲覧のみ"
+                        }
+                        st.session_state.gallery.append(new_log)
+                        save_to_db(new_log)
+                    else:
+                        st.error("生成に失敗しました。")
+                except Exception as e:
+                    st.error(f"エラー: {e}")
+
+    # --- ギャラリー・評価 ---
+    if st.session_state.gallery:
+        st.divider()
+        st.markdown("<h2>生成結果</h2>", unsafe_allow_html=True)
+        
+        total = len(st.session_state.gallery)
+        idx = 0
+        if total > 1:
+            idx = st.slider("スワイプして履歴を確認", 1, total, total) - 1
+            
+        res = st.session_state.gallery[idx]
+        display_img = b64_to_pil(res["gen_img_b64"])
+        
+        c_img1, c_img2, c_img3 = st.columns([1, 4, 1])
+        with c_img2:
+            st.image(display_img, use_container_width=True)
+            st.caption(res["desc"])
+            
+            st.write("")
+            st.markdown("<p style='text-align:center; font-weight:600; font-size:14px;'>画像を評価すると保存や再作成出来ます</p>", unsafe_allow_html=True)
+            
+            rating = st.radio("評価", [1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key=f"rate_{res['id']}")
+            
+            if rating is not None:
+                res["rating"] = rating
+                st.write("")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    buf = io.BytesIO()
+                    display_img.save(buf, format="PNG")
+                    if st.download_button("保存", data=buf.getvalue(), file_name=f"room_ai_{int(time.time())}.png", mime="image/png", use_container_width=True):
+                        res["action"] = "保存"
+                        save_to_db(res)
+                        st.success("保存完了")
+                with col_b:
+                    if st.button("再作成", use_container_width=True, key=f"retry_{res['id']}"):
+                        res["action"] = "再作成"
+                        save_to_db(res)
+                        st.session_state.auto_gen = True
+                        st.rerun()
+
+    st.divider()
+    if st.button("フロントページに戻る", use_container_width=True): go_to('front')
+
+# ==========================================
+# 🔒 3. 管理者画面 (DBから読み込み)
+# ==========================================
+elif st.session_state.page == 'admin':
+    st.markdown("<h2>管理者画面</h2>", unsafe_allow_html=True)
+    pw = st.text_input("パスワード", type="password")
+    
+    if pw == "hotta-admin":
+        st.write("")
+        history_data = load_from_db()
+        
+        if not history_data:
+            st.markdown("<p style='color: #86868b;'>保存されたデータはありません。</p>", unsafe_allow_html=True)
+        else:
+            st.write(f"記録数: {len(history_data)}件")
+            for log in reversed(history_data):
+                if log['rating'] > 0:
+                    st.markdown("<div style='padding: 24px; background-color: #ffffff; border: 1px solid #e5e5ea; border-radius: 16px; margin-bottom: 24px;'>", unsafe_allow_html=True)
+                    
+                    img_col1, img_col2 = st.columns(2)
+                    with img_col1:
+                        st.markdown("<p style='font-size:12px; color:#86868b; margin-bottom:4px;'>ベース画像</p>", unsafe_allow_html=True)
+                        st.image(b64_to_pil(log["base_img_b64"]), use_container_width=True)
+                    with img_col2:
+                        st.markdown("<p style='font-size:12px; color:#86868b; margin-bottom:4px;'>生成結果</p>", unsafe_allow_html=True)
+                        st.image(b64_to_pil(log["gen_img_b64"]), use_container_width=True)
+                    
+                    st.write("")
+                    st.markdown(f"<span style='font-weight:600;'>設定詳細:</span> {log['desc']}", unsafe_allow_html=True)
+                    st.markdown(f"<span style='font-weight:600;'>評価:</span> {log['rating']} / 5", unsafe_allow_html=True)
+                    st.markdown(f"<span style='font-weight:600;'>アクション:</span> {log['action']}", unsafe_allow_html=True)
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+    elif pw:
+        st.error("パスワードが違います。")
+        
+    st.divider()
+    if st.button("フロントページに戻る", use_container_width=True): go_to('front')
