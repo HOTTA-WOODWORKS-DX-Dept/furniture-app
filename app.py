@@ -1,70 +1,111 @@
 import streamlit as st
 import google.generativeai as genai
+from PIL import Image
+import io
 
-st.set_page_config(page_title="Model Checker", layout="wide")
-st.title("🛠️ Gemini API モデル診断")
-st.caption("あなたのAPIキーで利用可能な全モデルをリストアップします")
+# --- ページ設定 ---
+st.set_page_config(page_title="Room AI Studio", layout="wide")
+st.title("🛋️ Room AI Studio (Pro)")
+st.caption("Powered by Gemini 2.0 Flash & Imagen 4.0")
 
-# APIキー設定
+# --- API設定 ---
 try:
     if "GEMINI_API_KEY" in st.secrets:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
     else:
-        st.error("Secretsに APIキー が設定されていません。")
+        st.error("Secretsに GEMINI_API_KEY が設定されていません。")
         st.stop()
 except Exception as e:
-    st.error(f"API設定エラー: {e}")
+    st.error(f"起動エラー: {e}")
     st.stop()
 
-# --- 診断実行ボタン ---
-if st.button("モデル一覧を取得する", type="primary"):
-    try:
-        st.info("問い合わせ中...")
-        
-        # 利用可能なモデルを全取得
-        models = list(genai.list_models())
-        
-        # 結果を表示するためのリスト
-        text_models = []
-        image_models = []
-        vision_models = []
-        
-        for m in models:
-            # モデル名とサポート機能を確認
-            methods = m.supported_generation_methods
-            name = m.name
-            
-            # 分類
-            if 'generateContent' in methods:
-                if 'vision' in name or 'gemini' in name:
-                    vision_models.append(name)
-                else:
-                    text_models.append(name)
-            
-            if 'predict' in methods or 'generateImage' in methods or 'image' in name:
-                image_models.append(name)
-        
-        # --- 結果表示 ---
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📝 テキスト・画像認識 (Gemini)")
-            for m in vision_models:
-                st.code(m)
-                
-        with col2:
-            st.subheader("🎨 画像生成 (Imagen)")
-            if image_models:
-                for m in image_models:
-                    st.code(m)
-            else:
-                st.warning("画像生成用モデルが見つかりませんでした。")
-                st.caption("※有料プランでも、画像生成API（Imagen）は別途有効化が必要な場合があります。")
+# --- モデル設定 (診断リストに基づき決定) ---
+# 1. 家具を見る目 (Vision)
+VISION_MODEL_NAME = 'models/gemini-2.0-flash'
+# 2. 絵を描く手 (Image Generation)
+IMAGE_MODEL_NAME = 'models/imagen-4.0-generate-001'
 
-        st.success("取得完了")
+# --- 1033エラー対策：画像圧縮関数 ---
+def compress_image(image):
+    # サイズをスマホ写真(4000px)から扱いやすいサイズ(800px)に
+    image.thumbnail((800, 800))
+    img_byte_arr = io.BytesIO()
+    # JPEG形式で圧縮
+    image.save(img_byte_arr, format='JPEG', quality=85)
+    img_byte_arr.seek(0)
+    return Image.open(img_byte_arr)
+
+# --- メイン画面 ---
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("1. 家具を撮影・アップロード")
+    uploaded_file = st.file_uploader("家具の写真", type=["jpg", "png", "jpeg"])
+    
+    if uploaded_file:
+        # プレビュー表示
+        st.image(uploaded_file, width=300, caption="この家具を配置します")
+
+with col2:
+    st.subheader("2. コーディネート設定")
+    room = st.selectbox("部屋", ["リビング", "ダイニング", "寝室", "オフィス"])
+    style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "インダストリアル", "和モダン", "ラグジュアリー"])
+    
+    st.divider()
+    generate_btn = st.button("✨ 生成スタート", type="primary")
+
+# --- 生成実行ロジック ---
+if generate_btn:
+    if not uploaded_file:
+        st.warning("家具の写真をアップロードしてください")
+    else:
+        status = st.empty()
+        status.info("🚀 Gemini 2.0 が家具の特徴を分析中...")
         
-    except Exception as e:
-        st.error("エラーが発生しました")
-        st.error(e)
-        st.write("対策: APIキーが正しいか、Google AI StudioでAPIが有効になっているか確認してください。")
+        try:
+            # Step 1: 画像の圧縮（通信エラー回避）
+            org_img = Image.open(uploaded_file)
+            small_img = compress_image(org_img)
+            
+            # Step 2: Gemini 2.0 でプロンプト作成
+            vision_model = genai.GenerativeModel(VISION_MODEL_NAME)
+            
+            prompt_instruction = f"""
+            Describe the furniture in this image in detail (color, material, shape).
+            Then, create a high-quality prompt for an image generator to place this furniture in a {style} {room}.
+            The room should have beautiful lighting and realistic details.
+            Output ONLY the prompt text in English.
+            """
+            
+            # 画像と指示を送る
+            vision_response = vision_model.generate_content([prompt_instruction, small_img])
+            image_prompt = vision_response.text
+            
+            status.info("🎨 Imagen 4.0 が画像を描画中... (これには数秒かかります)")
+            
+            # Step 3: Imagen 4.0 で画像生成
+            imagen_model = genai.GenerativeModel(IMAGE_MODEL_NAME)
+            
+            # 画像生成を実行
+            result = imagen_model.generate_images(
+                prompt=image_prompt,
+                number_of_images=1,
+                aspect_ratio="4:3", # 写真らしい比率
+                safety_filter_level="block_only_high"
+            )
+            
+            # Step 4: 結果表示
+            status.success("生成完了！")
+            
+            # 生成された画像を取り出して表示
+            for img in result.images:
+                st.image(img, use_container_width=True, caption=f"Generated by Imagen 4.0 ({style})")
+                
+            with st.expander("AIが作成した指示書（プロンプト）"):
+                st.write(image_prompt)
+                
+        except Exception as e:
+            st.error("エラーが発生しました")
+            st.write(e)
+            st.info("ヒント: 画像生成(Imagen)は非常に高度な処理のため、たまに時間がかかりすぎることがあります。もう一度ボタンを押してみてください。")
