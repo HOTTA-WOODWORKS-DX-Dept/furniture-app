@@ -151,8 +151,8 @@ def go_to(page_name):
         st.session_state[k] = None
     st.rerun()
 
-# --- 安全なUI部品関数 ---
-def render_color_grid(options_dict, state_key):
+# --- 安全なUI部品関数 (重複エラー回避版) ---
+def render_color_grid(options_dict, state_key, unique_prefix):
     items = list(options_dict.items())
     for i in range(0, len(items), 4):
         cols = st.columns(4)
@@ -161,7 +161,8 @@ def render_color_grid(options_dict, state_key):
                 name, color = items[i + j]
                 with cols[j]:
                     st.markdown(f'<div style="background-color:{color}; width:100%; aspect-ratio:1/1; border-radius:8px; border:1px solid #e5e5ea; margin-bottom:8px;"></div>', unsafe_allow_html=True)
-                    if st.button(name, key=f"btn_{state_key}_{name}", use_container_width=True):
+                    # 重複を防ぐためにunique_prefixを追加
+                    if st.button(name, key=f"btn_{state_key}_{unique_prefix}_{name}", use_container_width=True):
                         st.session_state[state_key] = {"name": name, "val": color, "type": "preset"}
                         st.rerun()
 
@@ -232,8 +233,9 @@ elif st.session_state.page == 'sofa':
     if not st.session_state.fabric:
         st.markdown("<div class='section-title'>張地</div>", unsafe_allow_html=True)
         t1, t2 = st.tabs(["布", "革"])
-        with t1: render_color_grid(COLORS_FABRIC, "fabric")
-        with t2: render_color_grid(COLORS_LEATHER, "fabric")
+        # 第3引数に一意なID(fab, lea)を渡すことで重複エラーを回避
+        with t1: render_color_grid(COLORS_FABRIC, "fabric", "fab")
+        with t2: render_color_grid(COLORS_LEATHER, "fabric", "lea")
         st.write("")
         up_fab = st.file_uploader("独自の画像をアップロード (張地)", type=["jpg", "png"], key="ufab", label_visibility="collapsed")
         if up_fab:
@@ -248,8 +250,8 @@ elif st.session_state.page == 'sofa':
     if not st.session_state.frame:
         st.markdown("<div class='section-title'>フレーム</div>", unsafe_allow_html=True)
         t3, t4 = st.tabs(["木材", "金属"])
-        with t3: render_color_grid(COLORS_WOOD, "frame")
-        with t4: render_color_grid(COLORS_METAL, "frame")
+        with t3: render_color_grid(COLORS_WOOD, "frame", "wood")
+        with t4: render_color_grid(COLORS_METAL, "frame", "metal")
         st.write("")
         up_frm = st.file_uploader("独自の画像をアップロード (フレーム)", type=["jpg", "png"], key="ufrm", label_visibility="collapsed")
         if up_frm:
@@ -273,21 +275,21 @@ elif st.session_state.page == 'sofa':
     # --- 内装 ---
     if not st.session_state.floor:
         st.markdown("<div class='section-title'>床</div>", unsafe_allow_html=True)
-        render_color_grid(COLORS_INT, "floor")
+        render_color_grid(COLORS_INT, "floor", "fl")
     else:
         render_selected("床", st.session_state.floor, "floor")
 
     if st.session_state.floor:
         if not st.session_state.wall:
             st.markdown("<div class='section-title'>壁</div>", unsafe_allow_html=True)
-            render_color_grid(COLORS_INT, "wall")
+            render_color_grid(COLORS_INT, "wall", "wa")
         else:
             render_selected("壁", st.session_state.wall, "wall")
 
     if st.session_state.wall:
         if not st.session_state.fitting:
             st.markdown("<div class='section-title'>建具</div>", unsafe_allow_html=True)
-            render_color_grid(COLORS_INT, "fitting")
+            render_color_grid(COLORS_INT, "fitting", "fi")
         else:
             render_selected("建具", st.session_state.fitting, "fitting")
 
