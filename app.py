@@ -146,4 +146,5 @@ if generate_btn:
                 except Exception as e:
                     st.error(f"データ解析エラー: {e}")
                     
-        except Exception as
+        except Exception as e:
+            st.error(f"システムエラー: {e}")
