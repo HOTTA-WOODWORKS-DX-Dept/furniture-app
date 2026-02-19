@@ -2,92 +2,132 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 import urllib.parse
+import io
 import time
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Furniture AI Coordinator", layout="wide")
+st.set_page_config(page_title="Furniture AI Studio", layout="wide")
 
+# デザイン調整
 st.markdown("""
 <style>
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; padding: 0.8em; background-color: #0068C9; color: white; }
-    .main-img { border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; height: 3.5em; background-color: #0068C9; color: white; }
+    .reportview-container { background: #f0f2f6; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🛋️ 家具コーディネートAI")
-st.caption("Gemini 2026 Edition - 堀田木工所 DX事業部プロトタイプ")
+st.caption("通信エラー対策済み・軽量版プロトタイプ")
 
 # --- APIキー設定 ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
 except:
-    st.error("⚠️ SecretsにAPIキーを設定してください。")
+    st.error("⚠️ SecretsにGEMINI_API_KEYを設定してください。")
     st.stop()
 
-# --- モデル設定（安定版を使用） ---
-MODEL_NAME = 'models/gemini-flash-latest'
-model = genai.GenerativeModel(MODEL_NAME)
+# --- 画像を軽くする関数 (1033エラー対策) ---
+def resize_image(uploaded_file, max_size=800):
+    if uploaded_file is None:
+        return None
+    img = Image.open(uploaded_file)
+    # アスペクト比を維持してリサイズ
+    img.thumbnail((max_size, max_size), Image.LANCZOS)
+    return img
 
-# --- メインエリア ---
-col1, col2 = st.columns([1, 1.2])
+# --- モデル設定（安定版を優先） ---
+@st.cache_resource
+def load_model():
+    # 1.5-flash は無料枠が最も安定しており、かつ高速です
+    return genai.GenerativeModel('gemini-1.5-flash')
 
-with col1:
-    st.subheader("1. 家具・素材の登録")
-    furniture_file = st.file_uploader("家具の写真（スマホで撮影）", type=["jpg", "png", "jpeg"])
-    fabric_file = st.file_uploader("生地の写真（任意）", type=["jpg", "png", "jpeg"])
-    
-    if furniture_file:
-        st.image(Image.open(furniture_file), caption="解析対象の家具", use_container_width=True)
+model = load_model()
 
-with col2:
-    st.subheader("2. 空間デザイン設定")
-    room = st.selectbox("配置する部屋", ["リビングルーム", "ダイニング", "ベッドルーム", "子供部屋", "書斎"])
-    style = st.selectbox("デザインテイスト", ["北欧モダン", "ヴィンテージ", "インダストリアル", "和モダン", "シンプル"])
-    
-    st.divider()
-    if st.button("✨ この設定で画像を生成する"):
-        if not furniture_file:
+# --- メイン画面構成 ---
+tab1, tab2 = st.tabs(["アプリ本体", "管理者コンソール"])
+
+with tab1:
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.subheader("1. 家具と素材の登録")
+        # ① 家具の撮影・アップロード
+        f_file = st.file_uploader("家具の写真 (スマホ撮影OK)", type=["jpg", "jpeg", "png"], key="f_up")
+        # ② 家具の種類
+        f_type = st.selectbox("家具の種類", ["ソファ", "チェア", "テーブル", "ベッド", "収納棚"])
+        
+        # ③ メイン色（生地など）
+        fabric_file = st.file_uploader("生地・メイン色の写真 (任意)", type=["jpg", "jpeg", "png"], key="m_up")
+        
+        # ④ サブカラー（木部など）
+        wood_color = st.selectbox("木部・フレームの色", ["指定なし", "ナチュラル", "ウォールナット", "ホワイト", "ブラック"])
+
+    with col2:
+        st.subheader("2. お部屋の設定")
+        # ⑤ 置きたい部屋
+        room = st.selectbox("置きたい部屋", ["リビング", "ダイニング", "寝室", "子供部屋", "書斎"])
+        # ⑥ テイスト・色
+        style = st.selectbox("テイスト", ["北欧モダン", "ナチュラル", "ヴィンテージ", "インダストリアル", "和モダン"])
+        floor = st.selectbox("床の色", ["ライトブラウン", "ダークブラウン", "ホワイトタイル", "グレー"])
+        wall = st.selectbox("壁の色", ["ホワイト", "ライトグレー", "ベージュ", "ブルー(アクセント)"])
+
+        st.divider()
+        # ⑦ 生成実行
+        generate_btn = st.button("✨ コーディネート画像を生成")
+
+    # 生成処理
+    if generate_btn:
+        if not f_file:
             st.warning("家具の写真をアップロードしてください。")
         else:
-            with st.spinner("AIが空間をデザインしています..."):
+            with st.spinner("AIがコーディネートを分析中..."):
                 try:
-                    # 1. Geminiにプロンプトを作成させる
-                    img = Image.open(furniture_file)
-                    prompt_text = f"この家具のデザインを忠実に再現し、{style}な{room}に配置した高品質なインテリア写真のプロンプトを英語で作成してください。出力はプロンプトのみ。説明不要。"
+                    # 1033対策：画像をリサイズして通信量を減らす
+                    low_res_f = resize_image(f_file)
                     
-                    content = [prompt_text, img]
+                    # プロンプト作成
+                    prompt = f"Create a high-quality interior photography prompt. Action: Place the {f_type} from the image into a {style} {room}. Details: {floor} floor, {wall} walls, {wood_color} wood parts. Photorealistic, 8k, natural lighting. Output ONLY the English prompt."
+                    
+                    inputs = [prompt, low_res_f]
                     if fabric_file:
-                        content.append(Image.open(fabric_file))
+                        inputs.append(resize_image(fabric_file))
                     
-                    response = model.generate_content(content)
-                    # プロンプトを整理（改行などを消してURLを壊さないようにする）
+                    # Gemini実行
+                    response = model.generate_content(inputs)
                     eng_prompt = response.text.replace('\n', ' ').strip()
                     
-                    # 2. 画像生成エンジンへ送信
-                    # 安全のために長さを制限し、URLエンコードする
+                    # 画像生成エンジン(Pollinations)へ
                     safe_prompt = urllib.parse.quote(eng_prompt[:400])
-                    # 画像URLを生成（seedをランダムにして毎回違う画像にする）
-                    random_seed = int(time.time())
-                    image_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=768&nologo=true&seed={random_seed}&model=flux"
+                    img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
                     
-                    # 3. 結果の表示
-                    st.subheader("🖼️ 生成されたコーディネート案")
-                    # 画像本体を表示
-                    st.image(image_url, caption=f"{style}スタイルの提案", use_container_width=True)
+                    # ⑧ 結果表示
+                    st.divider()
+                    st.subheader("🖼️ 生成されたコーディネート")
+                    st.image(img_url, use_container_width=True)
                     
-                    # 万が一、ブラウザの制限で画像が表示されない時用のバックアップリンク
-                    st.markdown(f"🔗 [画像をフルサイズで開く]({image_url})")
-                    
-                    st.success("コーディネートが完成しました！")
-                    
-                    with st.expander("AIによるコーディネートの解説（英文プロンプト）"):
-                        st.write(eng_prompt)
-                        
-                    # ⑧ いいねボタン
-                    if st.button("❤️ このコーディネートを保存"):
-                        st.toast("お気に入り登録しました！")
-                    
+                    # いいねボタン
+                    if st.button("❤️ いいね！"):
+                        st.toast("ありがとうございます！")
+                        # 本来はここでDBに保存
+                        if 'history' not in st.session_state:
+                            st.session_state.history = []
+                        st.session_state.history.append({"time": time.ctime(), "style": style, "room": room})
+
                 except Exception as e:
-                    st.error(f"生成中にエラーが発生しました。時間を置いて再度お試しください。")
-                    st.caption(f"Error detail: {e}")
+                    st.error(f"エラーが発生しました。時間を置いて再度お試しください。")
+                    st.caption(f"Detail: {e}")
+
+# --- 管理者コンソール (ログイン機能) ---
+with tab2:
+    st.subheader("🔒 管理者メニュー")
+    pw = st.text_input("パスワードを入力", type="password")
+    if pw == "admin123": # 任意のパスワード
+        st.success("ログイン中")
+        if 'history' in st.session_state:
+            st.write("生成ログ (このセッション中のみ)")
+            st.table(st.session_state.history)
+        else:
+            st.info("まだ生成履歴はありません。")
+    elif pw:
+        st.error("パスワードが違います")
