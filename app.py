@@ -81,7 +81,7 @@ if generate_btn:
         try:
             # 1. Geminiを使って画像を分析し、プロンプトを作成させる
             # Gemini 1.5 Flashを使用（高速・軽量）
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-1.5-pro')
             
             # AIへの命令
             prompt = f"""
