@@ -70,19 +70,19 @@ STYLES = {
 }
 
 # ==========================================
-# 💅 動的CSS生成 (ボタンの画像化ハック)
+# 💅 動的CSS生成 (カラム検知方式の確実なハック)
 # ==========================================
 dynamic_css = ""
 
 # フロントページ用
 dynamic_css += """
-div[data-testid="element-container"]:has(.marker-front-sofa) + div[data-testid="element-container"] button { background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url('https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; position: relative !important; }
-div[data-testid="element-container"]:has(.marker-front-sofa) + div[data-testid="element-container"] button p { display: none !important; }
-div[data-testid="element-container"]:has(.marker-front-sofa) + div[data-testid="element-container"] button::after { content: 'SOFA'; color: white; font-size: 24px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+div[data-testid="column"]:has(.marker-front-sofa) button { background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url('https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; position: relative !important; overflow: hidden !important; }
+div[data-testid="column"]:has(.marker-front-sofa) button p { display: none !important; }
+div[data-testid="column"]:has(.marker-front-sofa) button::after { content: 'SOFA'; color: white; font-size: 24px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 
-div[data-testid="element-container"]:has(.marker-front-dining) + div[data-testid="element-container"] button { background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; cursor: default !important; position: relative !important; }
-div[data-testid="element-container"]:has(.marker-front-dining) + div[data-testid="element-container"] button p { display: none !important; }
-div[data-testid="element-container"]:has(.marker-front-dining) + div[data-testid="element-container"] button::after { content: 'Coming Soon\\A DINING'; white-space: pre; text-align: center; color: white; font-size: 20px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+div[data-testid="column"]:has(.marker-front-dining) button { background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; cursor: default !important; position: relative !important; overflow: hidden !important; }
+div[data-testid="column"]:has(.marker-front-dining) button p { display: none !important; }
+div[data-testid="column"]:has(.marker-front-dining) button::after { content: 'Coming Soon\\A DINING'; white-space: pre; text-align: center; color: white; font-size: 20px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 """
 
 # 素材・内装用の色ブロック
@@ -90,9 +90,9 @@ def add_color_css(prefix, color_dict):
     css = ""
     for name, hexcode in color_dict.items():
         css += f"""
-        div[data-testid="element-container"]:has(.marker-{prefix}-{name}) + div[data-testid="element-container"] button {{ background-color: {hexcode} !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px solid #e5e5ea !important; padding: 0 !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.03) !important; position: relative !important; overflow: visible !important; }}
-        div[data-testid="element-container"]:has(.marker-{prefix}-{name}) + div[data-testid="element-container"] button p {{ display: none !important; }}
-        div[data-testid="element-container"]:has(.marker-{prefix}-{name}) + div[data-testid="element-container"] button::after {{ content: '{name}'; position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #515154; white-space: nowrap; font-weight: normal; }}
+        div[data-testid="column"]:has(.marker-{prefix}-{name}) button {{ background-color: {hexcode} !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px solid #e5e5ea !important; padding: 0 !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.03) !important; position: relative !important; overflow: visible !important; }}
+        div[data-testid="column"]:has(.marker-{prefix}-{name}) button p {{ display: none !important; }}
+        div[data-testid="column"]:has(.marker-{prefix}-{name}) button::after {{ content: '{name}'; position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #515154; white-space: nowrap; font-weight: normal; }}
         """
     return css
 
@@ -105,9 +105,9 @@ dynamic_css += add_color_css("IN", COLORS_INT)
 # テイスト画像用のブロック
 for name, url in STYLES.items():
     dynamic_css += f"""
-    div[data-testid="element-container"]:has(.marker-ST-{name}) + div[data-testid="element-container"] button {{ background: url('{url}') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 12px !important; border: none !important; padding: 0 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.1) !important; position: relative !important; overflow: visible !important; }}
-    div[data-testid="element-container"]:has(.marker-ST-{name}) + div[data-testid="element-container"] button p {{ display: none !important; }}
-    div[data-testid="element-container"]:has(.marker-ST-{name}) + div[data-testid="element-container"] button::after {{ content: '{name}'; position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #515154; white-space: nowrap; font-weight: normal; }}
+    div[data-testid="column"]:has(.marker-ST-{name}) button {{ background: url('{url}') center/cover !important; width: 100% !important; aspect-ratio: 1/1 !important; border-radius: 12px !important; border: none !important; padding: 0 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.1) !important; position: relative !important; overflow: visible !important; }}
+    div[data-testid="column"]:has(.marker-ST-{name}) button p {{ display: none !important; }}
+    div[data-testid="column"]:has(.marker-ST-{name}) button::after {{ content: '{name}'; position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #515154; white-space: nowrap; font-weight: normal; }}
     """
 
 # --- ベースCSS ---
