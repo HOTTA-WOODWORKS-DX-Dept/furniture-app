@@ -13,8 +13,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛋️ 家具コーディネートAI (Gemini 2.0)")
-st.caption("Powered by Gemini 2.0 Flash (Vision) + AI Image Generator")
+st.title("🛋️ 家具コーディネートAI (Free Edition)")
+st.caption("Powered by Gemini 2.0 Flash (Vision)")
 
 # --- APIキー設定 ---
 try:
@@ -24,8 +24,8 @@ except:
     st.error("⚠️ APIキーが設定されていません。StreamlitのSecrets設定を行ってください。")
     st.stop()
 
-# --- モデル設定（確実に動くGemini 2.0 Flashを使用） ---
-# このモデルは画像を「見る」能力が非常に高いです
+# --- モデル設定（※重要：ここで無料枠のあるモデルを指定）---
+# gemini-3-pro-image は有料のみのため、gemini-2.0-flash を使用します
 MODEL_NAME = 'gemini-2.0-flash'
 
 @st.cache_resource
@@ -96,6 +96,7 @@ if generate_btn:
         
         try:
             # 1. Gemini 2.0 Flash に「画像を見てプロンプトを書かせる」
+            # これなら無料枠内で画像認識が可能です
             status_text.info("👀 Gemini 2.0 が家具と生地を観察中...")
             
             prompt_instruction = f"""
@@ -129,16 +130,15 @@ if generate_btn:
             
             status_bar.progress(50)
             status_text.info("🎨 画像を描画中...")
-            print(f"Prompt: {generated_prompt}") # デバッグ用
 
-            # 2. 生成されたプロンプトを使って画像を表示 (Pollinations API)
+            # 2. 生成されたプロンプトを使って画像を表示 (Pollinations API - 完全無料)
             # URLエンコード（文字をURLで使える形式に変換）
-            encoded_prompt = urllib.parse.quote(generated_prompt[:400]) # 長すぎるとエラーになるので調整
+            encoded_prompt = urllib.parse.quote(generated_prompt[:800]) 
             
-            # 画像URLを作成（ここが画像生成エンジンになります）
-            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=768&nologo=true&seed=123&model=flux"
+            # 画像URLを作成（Fluxモデル指定）
+            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=768&nologo=true&seed=42&model=flux"
             
-            # 表示
+            # 画像を表示
             st.image(image_url, caption=f"Generated: {style} style {room_type}", use_container_width=True)
             
             status_bar.progress(100)
@@ -153,4 +153,4 @@ if generate_btn:
 
         except Exception as e:
             st.error(f"エラーが発生しました: {e}")
-            st.warning("ヒント: 一時的な通信エラーの可能性があります。もう一度ボタンを押してみてください。")
+            st.info("Gemini 2.0 Flashを使用しています。")
