@@ -4,153 +4,81 @@ from PIL import Image
 import urllib.parse
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Furniture Coordinator 2.0", layout="wide")
+st.set_page_config(page_title="Furniture Coordinator 2026", layout="wide")
 
-st.markdown("""
-<style>
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; padding: 0.5em; }
-    .stButton>button:first-child { background-color: #0068C9; color: white; }
-</style>
-""", unsafe_allow_html=True)
-
-st.title("🛋️ 家具コーディネートAI (Free Edition)")
-st.caption("Powered by Gemini 2.0 Flash (Vision)")
+st.title("🛋️ 家具コーディネートAI")
+st.caption("最新の無料モデルを自動選択して生成します")
 
 # --- APIキー設定 ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
 except:
-    st.error("⚠️ APIキーが設定されていません。StreamlitのSecrets設定を行ってください。")
+    st.error("⚠️ APIキーが設定されていません。")
     st.stop()
 
-# --- モデル設定（※重要：ここで無料枠のあるモデルを指定）---
-# gemini-3-pro-image は有料のみのため、gemini-2.0-flash を使用します
-MODEL_NAME = 'gemini-2.0-flash'
-
+# --- 【重要】エラー回避用：利用可能な無料モデルを自動選択 ---
 @st.cache_resource
-def get_model():
-    return genai.GenerativeModel(MODEL_NAME)
+def get_safe_model():
+    # 優先順位：2.0 Flash > 1.5 Flash > 1.5 Pro
+    # ※ 3-pro-image はエラーになるのでリストから除外しています
+    candidate_models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+    
+    for model_name in candidate_models:
+        try:
+            m = genai.GenerativeModel(model_name)
+            # テスト的に名前を取得
+            return m, model_name
+        except:
+            continue
+    return None, None
 
-try:
-    model = get_model()
-except Exception as e:
-    st.error(f"モデルの読み込みに失敗しました: {e}")
+model, active_model_name = get_safe_model()
+
+if not model:
+    st.error("利用可能なモデルが見つかりません。")
     st.stop()
 
-# --- メインエリア ---
-col1, col2 = st.columns([1, 1.2])
+# --- メイン画面 ---
+col1, col2 = st.columns(2)
 
-# 【左カラム】入力エリア
 with col1:
-    st.subheader("1. 家具と素材")
+    st.subheader("1. 素材の登録")
+    furniture_file = st.file_uploader("家具の画像", type=["jpg", "png", "jpeg"])
+    fabric_file = st.file_uploader("生地の画像（任意）", type=["jpg", "png", "jpeg"])
     
-    # ① 家具画像（必須）
-    st.write("▼ ベースとなる家具")
-    furniture_file = st.file_uploader("家具をアップロード", type=["jpg", "png", "jpeg"], key="fur")
-    furniture_img = None
     if furniture_file:
-        furniture_img = Image.open(furniture_file)
-        st.image(furniture_img, use_container_width=True)
+        st.image(Image.open(furniture_file), caption="対象家具", use_container_width=True)
 
-    # ③ メイン生地（任意）
-    st.write("▼ 生地の素材感（張り地など）")
-    fabric_file = st.file_uploader("生地画像をアップロード（任意）", type=["jpg", "png", "jpeg"], key="fab")
-    fabric_img = None
-    if fabric_file:
-        fabric_img = Image.open(fabric_file)
-        st.image(fabric_img, width=150)
-        
-    # ④ 木部・サブカラー（任意）
-    st.write("▼ 木部・脚の色（任意）")
-    wood_color = st.selectbox("木部の色を選択", ["元のまま", "ナチュラルオーク", "ウォールナット（濃茶）", "ブラック", "ホワイト", "真鍮・ゴールド"])
-
-# 【右カラム】設定と生成エリア
 with col2:
-    st.subheader("2. コーディネート設定")
+    st.subheader("2. 空間の設定")
+    room = st.selectbox("部屋の種類", ["リビング", "ダイニング", "寝室", "子供部屋"])
+    style = st.selectbox("テイスト", ["北欧モダン", "ヴィンテージ", "インダストリアル", "ジャパンディ"])
     
-    # ② 家具の種類
-    furniture_type = st.text_input("家具の種類（例：3人掛けソファ、ダイニングチェア）", value="家具")
-
-    # ⑤ 部屋の選択
-    room_type = st.selectbox("置きたい部屋", ["リビングルーム", "ダイニングルーム", "ベッドルーム", "書斎", "子供部屋", "カフェのラウンジ"])
-
-    # ⑥ テイストと内装
-    c1, c2 = st.columns(2)
-    with c1:
-        style = st.selectbox("インテリアテイスト", ["北欧モダン", "シンプルモダン", "ヴィンテージ", "インダストリアル", "ジャパンディ（和モダン）", "ラグジュアリー"])
-    with c2:
-        floor_wall = st.selectbox("床と壁の雰囲気", ["明るいフローリングと白壁", "ダークな床とグレーの壁", "コンクリート打ちっぱなし", "畳と塗り壁"])
-
-    # ⑦ 生成実行
     st.divider()
-    generate_btn = st.button("✨ 画像を生成する", type="primary")
-
-# --- 生成ロジック ---
-if generate_btn:
-    if not furniture_img:
-        st.warning("⚠️ 家具の画像をアップロードしてください。")
-    else:
-        status_text = st.empty()
-        status_bar = st.progress(0)
-        
-        try:
-            # 1. Gemini 2.0 Flash に「画像を見てプロンプトを書かせる」
-            # これなら無料枠内で画像認識が可能です
-            status_text.info("👀 Gemini 2.0 が家具と生地を観察中...")
-            
-            prompt_instruction = f"""
-            You are an expert interior designer.
-            Look at the input images and create a detailed English image generation prompt to visualize the final scene.
-
-            # Input Images
-            1. The first image is the main furniture ({furniture_type}).
-            2. (Optional) The second image is the fabric/texture to be applied to the furniture.
-
-            # Task
-            Describe the scene where this furniture is placed in a {style} style {room_type}.
-            
-            # Details to include in the prompt:
-            - **Furniture:** Describe the furniture shape based on the first image.
-            - **Material:** If the second image exists, describe its color and texture (e.g., velvet, linen, leather) and apply it to the furniture.
-            - **Wood Color:** The legs/frame should be {wood_color}.
-            - **Room Context:** {floor_wall}.
-            - **Lighting & Vibe:** Photorealistic, 8k, interior design magazine quality, cinematic lighting.
-            
-            Output ONLY the English prompt. No explanations.
-            """
-            
-            inputs = [prompt_instruction, furniture_img]
-            if fabric_img:
-                inputs.append(fabric_img)
-            
-            # Gemini実行
-            response = model.generate_content(inputs)
-            generated_prompt = response.text
-            
-            status_bar.progress(50)
-            status_text.info("🎨 画像を描画中...")
-
-            # 2. 生成されたプロンプトを使って画像を表示 (Pollinations API - 完全無料)
-            # URLエンコード（文字をURLで使える形式に変換）
-            encoded_prompt = urllib.parse.quote(generated_prompt[:800]) 
-            
-            # 画像URLを作成（Fluxモデル指定）
-            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=768&nologo=true&seed=42&model=flux"
-            
-            # 画像を表示
-            st.image(image_url, caption=f"Generated: {style} style {room_type}", use_container_width=True)
-            
-            status_bar.progress(100)
-            status_text.success("生成完了！")
-            
-            with st.expander("AIが作成した指示書（プロンプト）を見る"):
-                st.write(generated_prompt)
-                
-            # ⑧ いいねボタン
-            if st.button("❤️ 結果に満足"):
-                st.toast("フィードバックを保存しました！")
-
-        except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
-            st.info("Gemini 2.0 Flashを使用しています。")
+    if st.button("✨ コーディネート画像を生成", type="primary"):
+        if not furniture_file:
+            st.warning("家具画像をアップロードしてください")
+        else:
+            with st.spinner(f"AI({active_model_name})が分析中..."):
+                try:
+                    # 1. Geminiに指示書（プロンプト）を書かせる
+                    furniture_img = Image.open(furniture_file)
+                    prompt_msg = f"この家具を{style}な{room}に配置するための、詳細な英語の画像生成プロンプトを作成してください。説明は不要です。"
+                    
+                    content = [prompt_msg, furniture_img]
+                    if fabric_file:
+                        content.append(Image.open(fabric_file))
+                    
+                    response = model.generate_content(content)
+                    eng_prompt = response.text
+                    
+                    # 2. 画像生成エンジン(Pollinations)で描画
+                    encoded_prompt = urllib.parse.quote(eng_prompt[:500])
+                    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=768&nologo=true&model=flux"
+                    
+                    st.image(image_url, caption="生成されたコーディネート", use_container_width=True)
+                    st.success("成功しました！")
+                    
+                except Exception as e:
+                    st.error(f"エラーが発生しました: {e}")
