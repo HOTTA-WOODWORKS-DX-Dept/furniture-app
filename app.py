@@ -12,8 +12,7 @@ st.set_page_config(page_title="AIソファ・リデコレーター", layout="cen
 st.title("🛋️ AIソファ・リデコレーター")
 st.write("Google Cloud Vertex AI (Imagen 2) を使用して、ソファの生地と部屋を張り替えます。")
 
-# --- 1. 認証と初期化 (ここが最重要) ---
-# Streamlit CloudのSecretsからJSONキーを読み込み、認証を通します。
+# --- 1. 認証と初期化 ---
 try:
     if "gcp_key_json" in st.secrets:
         # SecretsからJSON文字列を取得して辞書に変換
@@ -25,7 +24,7 @@ try:
         # プロジェクトIDをJSONから自動取得
         project_id = key_info["project_id"]
         
-        # Vertex AIを初期化 (credentialsを明示的に渡すことでTimeoutエラーを防ぐ)
+        # Vertex AIを初期化
         vertexai.init(project=project_id, location="us-central1", credentials=creds)
         
         st.success("✅ Google Cloud 認証成功")
@@ -81,8 +80,9 @@ if submitted:
             vertex_sofa_img = VertexImage(image_bytes=sofa_bytes)
             vertex_mask_img = VertexImage(image_bytes=mask_bytes)
 
-            # モデルのロード (Imagen 3)
-            model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-001")
+            # === 修正ポイント: モデルを安定版の imagegeneration@005 に変更 ===
+            model = ImageGenerationModel.from_pretrained("imagegeneration@005")
+            # ==========================================================
 
             status_container.info("🎨 画像を描画中... (20〜40秒ほどかかります)")
 
@@ -92,7 +92,7 @@ if submitted:
                 mask=vertex_mask_img,
                 prompt=prompt_text,
                 negative_prompt=negative_prompt,
-                guidance_scale=60, # プロンプトへの忠実度 (大きいほど指示に従う)
+                guidance_scale=60, # プロンプトへの忠実度
                 number_of_images=1
             )
 
@@ -101,12 +101,9 @@ if submitted:
             
             # 生成された画像を表示
             result_image = generated_images[0]
-            
-            # UIに表示
             st.image(result_image._image_bytes, caption="AIによる生成結果", use_column_width=True)
 
             # ダウンロードボタンの作成
-            # VertexImageをPIL経由でバイト列に戻してダウンロード可能にする
             pil_img = PILImage.open(io.BytesIO(result_image._image_bytes))
             buf = io.BytesIO()
             pil_img.save(buf, format="PNG")
@@ -121,7 +118,7 @@ if submitted:
 
         except Exception as e:
             status_container.error(f"生成中にエラーが発生しました: {e}")
-            st.error("ヒント: プロンプトがポリシー違反（有名人の名前など）の場合や、サーバー混雑時にもエラーが出ることがあります。")
+            st.error("ヒント: プロンプトがポリシー違反の場合や、サーバー混雑時にもエラーが出ることがあります。")
             
     else:
         st.warning("⚠️ 画像2枚とプロンプトをすべて入力してください。")
