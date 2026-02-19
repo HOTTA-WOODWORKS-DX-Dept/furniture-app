@@ -113,7 +113,8 @@ css += "div[data-testid='column']:has(.m-btn-cam) button { aspect-ratio: 1/1 !im
 def get_color_css(prefix, color_dict, has_no_change=False):
     c = ""
     if has_no_change:
-        c += f"div[data-testid='column']:has(.m-{prefix}-変更なし) button {{ background-color: #f5f5f7 !important; color: #1d1d1f !important; font-size: 11px !important; font-weight: 500 !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px dashed #d2d2d7 !important; padding: 0 !important; }}\n"
+        c += f"div[data-testid='column']:has(.m-{prefix}-変更なし) button {{ background-color: #f5f5f7 !important; color: transparent !important; font-size: 0px !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px dashed #d2d2d7 !important; padding: 0 !important; position: relative !important; }}\n"
+        c += f"div[data-testid='column']:has(.m-{prefix}-変更なし) button::after {{ content: '変更なし'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 11px; color: #1d1d1f; font-weight: 500; }}\n"
     for n, h in color_dict.items():
         c += f"div[data-testid='column']:has(.m-{prefix}-{n}) button {{ background-color: {h} !important; color: transparent !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px solid #e5e5ea !important; padding: 0 !important; }}\n"
     return c
@@ -131,7 +132,7 @@ for n, u in STYLES.items():
 css += "hr { margin: 40px 0; border-color: #e5e5ea; }\n"
 css += ".section-title { font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 12px; margin-top: 32px; }\n"
 css += ".helper-text { font-size: 14px; color: #86868b; margin-top: -10px; margin-bottom: 24px; }\n"
-css += ".select-prompt { font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 12px; margin-top: 8px; }\n" # 青文字を廃止
+css += ".select-prompt { font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 12px; margin-top: 8px; }\n"
 css += "</style>\n"
 
 st.markdown(css, unsafe_allow_html=True)
@@ -168,7 +169,7 @@ def crop_to_4_3_and_watermark(img):
     img = img.resize((1200, 900), Image.Resampling.LANCZOS)
     
     draw = ImageDraw.Draw(img)
-    # 透かしを3倍に (0.025 -> 0.075)
+    # 透かしを3倍に
     try: font = ImageFont.truetype("LiberationSans-Regular.ttf", int(img.height * 0.075)) 
     except: font = ImageFont.load_default()
     
@@ -180,17 +181,20 @@ def crop_to_4_3_and_watermark(img):
     draw.text((x, y), "HOTTA WOODWORKS-DX", font=font, fill=(255,255,255,240))
     return img
 
-# --- セッション状態 ---
+# --- セッション状態の初期化と自己治癒 ---
 if 'page' not in st.session_state: st.session_state.page = 'front'
 if 'gallery' not in st.session_state: st.session_state.gallery = [] 
 if 'auto_gen' not in st.session_state: st.session_state.auto_gen = False
 if 'img_mode' not in st.session_state: st.session_state.img_mode = 'upload'
 
-# 張地とフレームは「変更なし」を初期値に
+# 【重要】古いキャッシュのNoneを修復して確実に辞書型にする
 for k in ['fabric', 'frame']:
-    if k not in st.session_state: st.session_state[k] = {"name": "変更なし", "val": "none", "type": "preset"}
+    if k not in st.session_state or st.session_state[k] is None:
+        st.session_state[k] = {"name": "変更なし", "val": "none", "type": "preset"}
+        
 for k in ['style', 'floor', 'wall', 'fitting', 'up_fab', 'up_frame', 'cam_img']:
-    if k not in st.session_state: st.session_state[k] = None
+    if k not in st.session_state: 
+        st.session_state[k] = None
 
 def go_to(page_name):
     st.session_state.page = page_name
@@ -495,7 +499,6 @@ elif st.session_state.page == 'admin':
     
     if pw == "hotta-admin":
         st.write("")
-        # 「最新データを読み込む」ボタンを追加
         if st.button("🔄 最新のデータを読み込む", use_container_width=True):
             st.rerun()
             
