@@ -1,111 +1,122 @@
 import streamlit as st
-import google.generativeai as genai
-from PIL import Image
+import requests
+import json
+import base64
 import io
+from PIL import Image
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Room AI Studio", layout="wide")
+st.set_page_config(page_title="Room AI Studio Pro", layout="wide")
 st.title("🛋️ Room AI Studio (Pro)")
-st.caption("Powered by Gemini 2.0 Flash & Imagen 4.0")
+st.caption("Gemini 2.0 Flash (Vision) × Imagen 4.0 (Generation)")
 
-# --- API設定 ---
+# --- APIキー確認 ---
 try:
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-    else:
-        st.error("Secretsに GEMINI_API_KEY が設定されていません。")
-        st.stop()
-except Exception as e:
-    st.error(f"起動エラー: {e}")
+    api_key = st.secrets["GEMINI_API_KEY"]
+except:
+    st.error("SecretsにAPIキーが設定されていません")
     st.stop()
 
-# --- モデル設定 (診断リストに基づき決定) ---
-# 1. 家具を見る目 (Vision)
-VISION_MODEL_NAME = 'models/gemini-2.0-flash'
-# 2. 絵を描く手 (Image Generation)
-IMAGE_MODEL_NAME = 'models/imagen-4.0-generate-001'
-
-# --- 1033エラー対策：画像圧縮関数 ---
-def compress_image(image):
-    # サイズをスマホ写真(4000px)から扱いやすいサイズ(800px)に
-    image.thumbnail((800, 800))
-    img_byte_arr = io.BytesIO()
-    # JPEG形式で圧縮
-    image.save(img_byte_arr, format='JPEG', quality=85)
-    img_byte_arr.seek(0)
-    return Image.open(img_byte_arr)
+# --- 画像処理関数 ---
+def image_to_base64(uploaded_file):
+    # 画像を少し小さくして通信エラーを防ぐ
+    img = Image.open(uploaded_file)
+    img.thumbnail((800, 800))
+    # JPEG変換
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG", quality=80)
+    # Base64エンコード
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 # --- メイン画面 ---
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    st.subheader("1. 家具を撮影・アップロード")
+    st.subheader("1. 家具を撮影")
     uploaded_file = st.file_uploader("家具の写真", type=["jpg", "png", "jpeg"])
-    
     if uploaded_file:
-        # プレビュー表示
-        st.image(uploaded_file, width=300, caption="この家具を配置します")
+        st.image(uploaded_file, width=300, caption="解析対象")
 
 with col2:
     st.subheader("2. コーディネート設定")
-    room = st.selectbox("部屋", ["リビング", "ダイニング", "寝室", "オフィス"])
+    room = st.selectbox("部屋", ["リビング", "ダイニング", "寝室", "オフィス", "カフェ"])
     style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "インダストリアル", "和モダン", "ラグジュアリー"])
     
     st.divider()
     generate_btn = st.button("✨ 生成スタート", type="primary")
 
-# --- 生成実行ロジック ---
+# --- 実行ロジック ---
 if generate_btn:
     if not uploaded_file:
-        st.warning("家具の写真をアップロードしてください")
+        st.warning("写真をアップロードしてください")
     else:
         status = st.empty()
-        status.info("🚀 Gemini 2.0 が家具の特徴を分析中...")
+        status.info("🚀 Gemini 2.0 が家具を見ています...")
         
         try:
-            # Step 1: 画像の圧縮（通信エラー回避）
-            org_img = Image.open(uploaded_file)
-            small_img = compress_image(org_img)
+            # 1. Gemini 2.0 Flash で家具を分析 (REST API)
+            base64_img = image_to_base64(uploaded_file)
             
-            # Step 2: Gemini 2.0 でプロンプト作成
-            vision_model = genai.GenerativeModel(VISION_MODEL_NAME)
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
             
-            prompt_instruction = f"""
-            Describe the furniture in this image in detail (color, material, shape).
-            Then, create a high-quality prompt for an image generator to place this furniture in a {style} {room}.
-            The room should have beautiful lighting and realistic details.
-            Output ONLY the prompt text in English.
-            """
+            gemini_payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": f"Describe this furniture in detail. Then write a high-quality English prompt for an image generator to place this furniture in a {style} {room}. The room should have cinematic lighting. Output ONLY the prompt text."},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": base64_img}}
+                    ]
+                }]
+            }
             
-            # 画像と指示を送る
-            vision_response = vision_model.generate_content([prompt_instruction, small_img])
-            image_prompt = vision_response.text
+            response_gemini = requests.post(gemini_url, headers={'Content-Type': 'application/json'}, data=json.dumps(gemini_payload))
             
-            status.info("🎨 Imagen 4.0 が画像を描画中... (これには数秒かかります)")
-            
-            # Step 3: Imagen 4.0 で画像生成
-            imagen_model = genai.GenerativeModel(IMAGE_MODEL_NAME)
-            
-            # 画像生成を実行
-            result = imagen_model.generate_images(
-                prompt=image_prompt,
-                number_of_images=1,
-                aspect_ratio="4:3", # 写真らしい比率
-                safety_filter_level="block_only_high"
-            )
-            
-            # Step 4: 結果表示
-            status.success("生成完了！")
-            
-            # 生成された画像を取り出して表示
-            for img in result.images:
-                st.image(img, use_container_width=True, caption=f"Generated by Imagen 4.0 ({style})")
+            if response_gemini.status_code != 200:
+                st.error(f"Gemini Error: {response_gemini.text}")
+                st.stop()
                 
-            with st.expander("AIが作成した指示書（プロンプト）"):
-                st.write(image_prompt)
+            # プロンプト抽出
+            prompt_text = response_gemini.json()['candidates'][0]['content']['parts'][0]['text']
+            clean_prompt = prompt_text.replace('\n', ' ').strip()
+            
+            status.info("🎨 Imagen 4.0 が描画中... (Googleの最新AIを使用)")
+            
+            # 2. Imagen 4.0 で画像を生成 (REST API)
+            # ※ここで最新モデル 'imagen-4.0-generate-001' を呼び出します
+            imagen_url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
+            
+            imagen_payload = {
+                "instances": [
+                    {"prompt": clean_prompt}
+                ],
+                "parameters": {
+                    "sampleCount": 1,
+                    "aspectRatio": "4:3"
+                }
+            }
+            
+            response_imagen = requests.post(imagen_url, headers={'Content-Type': 'application/json'}, data=json.dumps(imagen_payload))
+            
+            if response_imagen.status_code == 200:
+                result = response_imagen.json()
                 
+                # 画像データの取り出し (Base64で返ってきます)
+                if 'predictions' in result:
+                    b64_data = result['predictions'][0]['bytesBase64Encoded']
+                    image_data = base64.b64decode(b64_data)
+                    final_image = Image.open(io.BytesIO(image_data))
+                    
+                    status.success("生成完了！")
+                    st.image(final_image, use_container_width=True, caption=f"Generated by Imagen 4.0 ({style})")
+                    
+                    with st.expander("使用したプロンプト"):
+                        st.write(clean_prompt)
+                else:
+                    st.error("画像データが含まれていませんでした。")
+                    st.write(result)
+            else:
+                st.error(f"Imagen Error: {response_imagen.status_code}")
+                st.write(response_imagen.text)
+                st.info("※ もし404エラーが出る場合、モデル名を 'imagen-3.0-generate-001' に変更してみてください。")
+
         except Exception as e:
-            st.error("エラーが発生しました")
-            st.write(e)
-            st.info("ヒント: 画像生成(Imagen)は非常に高度な処理のため、たまに時間がかかりすぎることがあります。もう一度ボタンを押してみてください。")
+            st.error(f"システムエラー: {e}")
