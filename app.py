@@ -1,104 +1,89 @@
 import streamlit as st
-import requests
-import json
-import base64
-import time
+import google.generativeai as genai
+from PIL import Image
 import urllib.parse
+import time
+import io
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Room AI (Direct)", layout="wide")
+st.set_page_config(page_title="Room AI Studio (Hybrid)", layout="wide")
 st.title("🛋️ Room AI Studio")
-st.caption("REST APIモード - 1033エラー回避版")
+st.caption("画像がだめなら文字で指示！ハイブリッド版")
 
-# --- APIキー確認 ---
+# --- API設定 ---
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    # 成功実績のあるモデル名
+    model = genai.GenerativeModel('models/gemini-flash-latest')
 except:
-    st.error("SecretsにAPIキーがありません")
+    st.error("APIキー設定エラー")
     st.stop()
 
-# --- 画像をBase64に変換する関数 ---
-def image_to_base64(uploaded_file):
-    bytes_data = uploaded_file.getvalue()
-    base64_str = base64.b64encode(bytes_data).decode('utf-8')
-    return base64_str
+# --- 画面構成 ---
+st.subheader("1. 家具を指定する")
 
-# --- メイン画面 ---
-col1, col2 = st.columns(2)
+# タブで切り替え（ここがポイント！）
+tab1, tab2 = st.tabs(["📷 写真をアップロード", "✍️ 文字で入力"])
 
-with col1:
-    st.subheader("1. 家具画像")
-    f_file = st.file_uploader("家具をアップロード", type=["jpg", "png", "jpeg"])
+furniture_desc = ""
+uploaded_img = None
+
+with tab1:
+    f_file = st.file_uploader("家具の写真", type=["jpg", "png", "jpeg"])
     if f_file:
-        st.image(f_file, width=300, caption="送信画像")
+        st.image(f_file, width=200)
+        uploaded_img = f_file
 
+with tab2:
+    text_input = st.text_input("家具の特徴を入力 (例: 茶色の革製3人掛けソファ)", "")
+    if text_input:
+        furniture_desc = text_input
+
+st.subheader("2. 部屋のスタイル")
+col1, col2 = st.columns(2)
+with col1:
+    room = st.selectbox("部屋", ["リビング", "ダイニング", "寝室", "オフィス"])
 with col2:
-    st.subheader("2. 設定")
-    room = st.selectbox("部屋", ["リビング", "ダイニング", "寝室"])
-    style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "インダストリアル"])
-    
-    generate_btn = st.button("✨ 生成スタート", type="primary")
+    style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "インダストリアル", "和モダン"])
 
-if generate_btn:
-    if not f_file:
-        st.warning("画像をアップロードしてください")
-    else:
-        status = st.empty()
-        status.info("🚀 Googleサーバーへ問い合わせ中...")
+st.divider()
+
+if st.button("✨ 生成スタート", type="primary"):
+    status = st.empty()
+    status.info("🚀 AIが思考中...")
+    
+    try:
+        final_prompt = ""
         
-        try:
-            # 1. 画像データ準備
-            base64_image = image_to_base64(f_file)
-            mime_type = f_file.type
+        # A. 画像がある場合 (Geminiに画像を見せる)
+        if uploaded_img:
+            img = Image.open(uploaded_img)
+            # 画像を極小化
+            img.thumbnail((300, 300))
             
-            # 2. モデルURL (ここを修正しました！)
-            # gemini-1.5-flash ではなく、実績のある gemini-flash-latest を指定
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+            prompt = f"Describe this furniture and write a short English prompt to place it in a {style} {room}. No intro."
+            response = model.generate_content([prompt, img])
+            final_prompt = response.text
             
-            # 3. データ作成
-            payload = {
-                "contents": [{
-                    "parts": [
-                        {"text": f"Describe this furniture shape and write a short English prompt to place it in a {style} {room}. Output ONLY the prompt. No intro."},
-                        {
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": base64_image
-                            }
-                        }
-                    ]
-                }]
-            }
-            headers = {'Content-Type': 'application/json'}
+        # B. 文字入力がある場合 (Geminiに想像させる)
+        elif furniture_desc:
+            prompt = f"Write a short English prompt for a photorealistic image of a '{furniture_desc}' placed in a {style} {room}. No intro."
+            response = model.generate_content(prompt)
+            final_prompt = response.text
             
-            # 4. 送信実行
-            response = requests.post(url, headers=headers, data=json.dumps(payload))
-            
-            # 5. 結果処理
-            if response.status_code == 200:
-                result = response.json()
-                try:
-                    # テキストを取り出す
-                    eng_prompt = result['candidates'][0]['content']['parts'][0]['text']
-                    clean_prompt = eng_prompt.replace('\n', ' ').strip()[:400]
-                    
-                    status.success("解析成功！画像を表示します")
-                    
-                    # 画像生成URL作成
-                    encoded = urllib.parse.quote(clean_prompt)
-                    img_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
-                    
-                    # 表示
-                    st.image(img_url, use_container_width=True)
-                    st.markdown(f"[画像が表示されない場合はこちら]({img_url})")
-                    
-                except Exception as parse_error:
-                    st.error("AIの応答解析に失敗しました")
-                    st.write(result)
-            else:
-                # エラー時の詳細表示
-                st.error(f"APIエラー: {response.status_code}")
-                st.write(response.text)
-                
-        except Exception as e:
-            st.error(f"通信エラー: {e}")
+        else:
+            st.warning("写真か文字、どちらかを入力してください")
+            st.stop()
+
+        # 画像生成 (Pollinations)
+        status.success("描画中...")
+        clean_prompt = final_prompt.replace('\n', ' ').strip()[:400]
+        encoded = urllib.parse.quote(clean_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
+        
+        st.image(url, use_container_width=True)
+        st.markdown(f"[画像リンク]({url})")
+        
+    except Exception as e:
+        st.error(f"エラー: {e}")
+        st.info("ヒント: 画像でエラーが出る場合は、「文字で入力」タブを試してみてください。")
