@@ -6,9 +6,9 @@ import time
 import urllib.parse
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Room AI (REST API)", layout="wide")
-st.title("🛋️ Room AI Studio (Direct Mode)")
-st.caption("公式ライブラリ不使用・軽量通信版")
+st.set_page_config(page_title="Room AI (Direct)", layout="wide")
+st.title("🛋️ Room AI Studio")
+st.caption("REST APIモード - 1033エラー回避版")
 
 # --- APIキー確認 ---
 try:
@@ -17,11 +17,9 @@ except:
     st.error("SecretsにAPIキーがありません")
     st.stop()
 
-# --- 画像をBase64（文字データ）に変換する関数 ---
+# --- 画像をBase64に変換する関数 ---
 def image_to_base64(uploaded_file):
-    # ファイルをバイトデータとして読み込む
     bytes_data = uploaded_file.getvalue()
-    # Base64エンコード
     base64_str = base64.b64encode(bytes_data).decode('utf-8')
     return base64_str
 
@@ -39,28 +37,29 @@ with col2:
     room = st.selectbox("部屋", ["リビング", "ダイニング", "寝室"])
     style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "インダストリアル"])
     
-    generate_btn = st.button("✨ 生成スタート (Direct)", type="primary")
+    generate_btn = st.button("✨ 生成スタート", type="primary")
 
 if generate_btn:
     if not f_file:
         st.warning("画像をアップロードしてください")
     else:
         status = st.empty()
-        status.info("🚀 Googleサーバーへ直接通信中...")
+        status.info("🚀 Googleサーバーへ問い合わせ中...")
         
         try:
-            # 1. 画像を文字データ化
+            # 1. 画像データ準備
             base64_image = image_to_base64(f_file)
-            mime_type = f_file.type # image/jpeg など
+            mime_type = f_file.type
             
-            # 2. 直接APIを叩くためのURL (Gemini 1.5 Flash)
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            # 2. モデルURL (ここを修正しました！)
+            # gemini-1.5-flash ではなく、実績のある gemini-flash-latest を指定
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
             
-            # 3. データ作成（JSON）
+            # 3. データ作成
             payload = {
                 "contents": [{
                     "parts": [
-                        {"text": f"Describe this furniture shape and write a short English prompt to place it in a {style} {room}. No intro."},
+                        {"text": f"Describe this furniture shape and write a short English prompt to place it in a {style} {room}. Output ONLY the prompt. No intro."},
                         {
                             "inline_data": {
                                 "mime_type": mime_type,
@@ -72,30 +71,32 @@ if generate_btn:
             }
             headers = {'Content-Type': 'application/json'}
             
-            # 4. 送信実行（requestsを使用）
+            # 4. 送信実行
             response = requests.post(url, headers=headers, data=json.dumps(payload))
             
-            # 5. 結果の判定
+            # 5. 結果処理
             if response.status_code == 200:
                 result = response.json()
-                # プロンプト抽出
                 try:
+                    # テキストを取り出す
                     eng_prompt = result['candidates'][0]['content']['parts'][0]['text']
                     clean_prompt = eng_prompt.replace('\n', ' ').strip()[:400]
                     
                     status.success("解析成功！画像を表示します")
                     
-                    # 画像生成URL
+                    # 画像生成URL作成
                     encoded = urllib.parse.quote(clean_prompt)
                     img_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
                     
+                    # 表示
                     st.image(img_url, use_container_width=True)
-                    st.markdown(f"[画像リンク]({img_url})")
+                    st.markdown(f"[画像が表示されない場合はこちら]({img_url})")
                     
                 except Exception as parse_error:
-                    st.error("AIからの応答の解析に失敗しました")
+                    st.error("AIの応答解析に失敗しました")
                     st.write(result)
             else:
+                # エラー時の詳細表示
                 st.error(f"APIエラー: {response.status_code}")
                 st.write(response.text)
                 
