@@ -1,102 +1,103 @@
 import streamlit as st
-import google.generativeai as genai
-from PIL import Image
-import urllib.parse
-import io
+import requests
+import json
+import base64
 import time
+import urllib.parse
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Room AI Studio", layout="wide")
-st.title("🛋️ Room AI Studio")
-st.caption("通信エラー・モデル名エラー対策済み")
+st.set_page_config(page_title="Room AI (REST API)", layout="wide")
+st.title("🛋️ Room AI Studio (Direct Mode)")
+st.caption("公式ライブラリ不使用・軽量通信版")
 
-# --- APIキー設定 ---
+# --- APIキー確認 ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
 except:
-    st.error("⚠️ SecretsにAPIキーを設定してください。")
+    st.error("SecretsにAPIキーがありません")
     st.stop()
 
-# --- 【重要】あなたの環境で「存在する」モデル名を使用 ---
-# 診断リストにあった、最も確実な名前を指定します
-MODEL_NAME = 'models/gemini-flash-latest'
-
-@st.cache_resource
-def get_model():
-    return genai.GenerativeModel(MODEL_NAME)
-
-try:
-    model = get_model()
-except Exception as e:
-    st.error(f"モデル設定エラー: {e}")
-    st.stop()
-
-# --- 【最重要】通信エラー(1033)を回避する画像圧縮関数 ---
-def compress_image(image):
-    # 1. サイズを400pxまで縮小（スマホ写真は大きすぎるため）
-    image.thumbnail((400, 400))
-    
-    # 2. メモリ上でJPEG形式に変換して容量を削減
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='JPEG', quality=60)
-    img_byte_arr.seek(0)
-    
-    # 3. 軽量化した画像を返す
-    return Image.open(img_byte_arr)
+# --- 画像をBase64（文字データ）に変換する関数 ---
+def image_to_base64(uploaded_file):
+    # ファイルをバイトデータとして読み込む
+    bytes_data = uploaded_file.getvalue()
+    # Base64エンコード
+    base64_str = base64.b64encode(bytes_data).decode('utf-8')
+    return base64_str
 
 # --- メイン画面 ---
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("1. 家具の写真")
+    st.subheader("1. 家具画像")
     f_file = st.file_uploader("家具をアップロード", type=["jpg", "png", "jpeg"])
     if f_file:
-        # 画面表示用
-        st.image(f_file, caption="解析対象", width=300)
+        st.image(f_file, width=300, caption="送信画像")
 
 with col2:
     st.subheader("2. 設定")
     room = st.selectbox("部屋", ["リビング", "ダイニング", "寝室"])
-    style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "和モダン"])
+    style = st.selectbox("スタイル", ["北欧モダン", "ヴィンテージ", "インダストリアル"])
     
-    st.divider()
-    generate_btn = st.button("✨ 生成スタート", type="primary")
+    generate_btn = st.button("✨ 生成スタート (Direct)", type="primary")
 
 if generate_btn:
     if not f_file:
-        st.warning("写真をアップロードしてください")
+        st.warning("画像をアップロードしてください")
     else:
         status = st.empty()
-        status.info("🚀 AIが画像を解析中... (軽量化モード)")
+        status.info("🚀 Googleサーバーへ直接通信中...")
         
         try:
-            # 1. 画像を開いて圧縮（ここで1033を防ぐ）
-            original_img = Image.open(f_file)
-            small_img = compress_image(original_img)
+            # 1. 画像を文字データ化
+            base64_image = image_to_base64(f_file)
+            mime_type = f_file.type # image/jpeg など
             
-            # 2. プロンプト作成指示
-            prompt = f"Describe this furniture shape briefly and write a short English prompt to place it in a {style} {room}. No intro."
+            # 2. 直接APIを叩くためのURL (Gemini 1.5 Flash)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
             
-            # 3. 実行
-            response = model.generate_content([prompt, small_img])
+            # 3. データ作成（JSON）
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": f"Describe this furniture shape and write a short English prompt to place it in a {style} {room}. No intro."},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": base64_image
+                            }
+                        }
+                    ]
+                }]
+            }
+            headers = {'Content-Type': 'application/json'}
             
-            # テキストの掃除
-            eng_prompt = response.text.replace('\n', ' ').strip()[:300]
+            # 4. 送信実行（requestsを使用）
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
             
-            status.success("解析完了！画像を描画します...")
-            
-            # 4. 画像生成 (Pollinations)
-            safe_prompt = urllib.parse.quote(eng_prompt)
-            img_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
-            
-            # 5. 結果表示
-            st.subheader("完成イメージ")
-            st.image(img_url, use_container_width=True)
-            
-            # 予備リンク
-            st.markdown(f"[画像が表示されない場合はこちら]({img_url})")
-            
+            # 5. 結果の判定
+            if response.status_code == 200:
+                result = response.json()
+                # プロンプト抽出
+                try:
+                    eng_prompt = result['candidates'][0]['content']['parts'][0]['text']
+                    clean_prompt = eng_prompt.replace('\n', ' ').strip()[:400]
+                    
+                    status.success("解析成功！画像を表示します")
+                    
+                    # 画像生成URL
+                    encoded = urllib.parse.quote(clean_prompt)
+                    img_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=768&nologo=true&seed={int(time.time())}&model=flux"
+                    
+                    st.image(img_url, use_container_width=True)
+                    st.markdown(f"[画像リンク]({img_url})")
+                    
+                except Exception as parse_error:
+                    st.error("AIからの応答の解析に失敗しました")
+                    st.write(result)
+            else:
+                st.error(f"APIエラー: {response.status_code}")
+                st.write(response.text)
+                
         except Exception as e:
-            st.error("エラーが発生しました。")
-            st.code(f"Error details: {e}")
+            st.error(f"通信エラー: {e}")
