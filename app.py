@@ -53,13 +53,14 @@ def load_from_db():
 init_db()
 
 # ==========================================
-# 🎨 カラー・画像データ
+# 🎨 カラー・画像・初期設定データ
 # ==========================================
 COLORS_FABRIC = {"ホワイト":"#F8F8F8", "アイボリー":"#FFFFF0", "ベージュ":"#F5F5DC", "ライトグレー":"#D3D3D3", "ダークグレー":"#696969", "ブラック":"#202020", "ネイビー":"#191970", "グリーン":"#556B2F", "マスタード":"#FFDB58", "テラコッタ":"#E2725B"}
 COLORS_LEATHER = {"ブラック":"#1A1A1A", "ブラウン":"#5C4033", "キャメル":"#C19A6B", "アイボリー":"#FAF0E6", "ワイン":"#722F37"}
 COLORS_WOOD = {"ナチュラルオーク":"#D2B48C", "ホワイトアッシュ":"#F5DEB3", "ウォールナット":"#5C4033", "チェリー":"#D2691E", "チーク":"#CD853F", "マホガニー":"#C04000", "ブラック":"#1A1A1A", "ホワイト":"#F8F8FF"}
 COLORS_METAL = {"シルバー":"#C0C0C0", "ステンレス":"#B0C4DE", "真鍮":"#B5A642", "銅":"#B87333", "マットブラック":"#2F4F4F"}
-COLORS_INT = {"ホワイト":"#FFFFFF", "アイボリー":"#FFFFF0", "ベージュ":"#F5F5DC", "ライトオーク":"#DEB887", "ウォールナット":"#5C4033", "ダークブラウン":"#3E2723", "ライトグレー":"#D3D3D3", "ダークグレー":"#696969", "ブラック":"#1C1C1C", "アクセントブルー":"#2C3E50"}
+# 畳を追加
+COLORS_INT = {"ホワイト":"#FFFFFF", "アイボリー":"#FFFFF0", "ベージュ":"#F5F5DC", "ライトオーク":"#DEB887", "ウォールナット":"#5C4033", "ダークブラウン":"#3E2723", "ライトグレー":"#D3D3D3", "ダークグレー":"#696969", "ブラック":"#1C1C1C", "アクセントブルー":"#2C3E50", "畳":"#D3D2A5"}
 
 STYLES = {
     "北欧ナチュラル": "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&q=60&w=300",
@@ -69,36 +70,71 @@ STYLES = {
     "コンテンポラリー": "https://images.unsplash.com/photo-1600607686527-6fb886090705?auto=format&fit=crop&q=60&w=300"
 }
 
+STYLE_DEFAULTS = {
+    "北欧ナチュラル": {"floor": "ライトオーク", "wall": "ホワイト", "fitting": "ライトオーク"},
+    "モダン": {"floor": "ライトグレー", "wall": "ホワイト", "fitting": "ウォールナット"},
+    "ヴィンテージ": {"floor": "ウォールナット", "wall": "ホワイト", "fitting": "ウォールナット"},
+    "和風": {"floor": "畳", "wall": "ホワイト", "fitting": "ライトオーク"},
+    "コンテンポラリー": {"floor": "ライトグレー", "wall": "ホワイト", "fitting": "ホワイト"}
+}
+
 # ==========================================
-# 💅 安全なベースCSS
+# 💅 絶対にエラーにならないCSS生成
 # ==========================================
-st.markdown("""
-<style>
-    html, body, [class*="css"] { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Kaku Gothic ProN", sans-serif; color: #1d1d1f; background-color: #fbfbfd; }
-    h1, h2, h3, h4 { font-weight: 600; letter-spacing: -0.02em; }
-    *:focus, *:active { outline: none !important; box-shadow: none !important; }
+css = "<style>\n"
+css += "html, body, [class*='css'] { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', sans-serif; color: #1d1d1f; background-color: #fbfbfd; }\n"
+css += "h1, h2, h3, h4 { font-weight: 600; letter-spacing: -0.02em; }\n"
+css += "*:focus, *:active { outline: none !important; box-shadow: none !important; }\n"
 
-    /* アップローダーの日本語化 */
-    [data-testid="stFileUploadDropzone"] div div::before { content: "ここに画像をドラッグ＆ドロップ、またはファイルを選択"; display: block; font-size: 14px; color: #1d1d1f; font-weight: 500; text-align: center; margin-bottom: 10px; }
-    [data-testid="stFileUploadDropzone"] div div span { display: none; }
-    [data-testid="stFileUploadDropzone"] small { display: none; }
-    
-    /* 生成ボタン */
-    button[kind="primary"] { background-color: #1d1d1f !important; color: #ffffff !important; border: none !important; border-radius: 24px !important; padding: 14px 24px !important; font-size: 16px !important; font-weight: 600 !important; transition: transform 0.2s ease; }
-    button[kind="primary"]:hover { opacity: 0.8; transform: scale(1.02); }
+# アップローダーの日本語化
+css += "[data-testid='stFileUploadDropzone'] div div::before { content: 'ここに画像をドラッグ＆ドロップ、またはファイルを選択'; display: block; font-size: 14px; color: #1d1d1f; font-weight: 500; text-align: center; margin-bottom: 10px; }\n"
+css += "[data-testid='stFileUploadDropzone'] div div span { display: none; }\n"
+css += "[data-testid='stFileUploadDropzone'] small { display: none; }\n"
 
-    /* 通常ボタン（選択肢用） */
-    button[kind="secondary"] { border-radius: 8px !important; border: 1px solid #d2d2d7 !important; background-color: #ffffff !important; color: #1d1d1f !important; font-size: 12px !important; padding: 4px 8px !important; }
-    
-    /* スライダーをグレーに */
-    div[data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stSliderTrack"] > div:first-child { background-color: #86868b !important; }
-    div[data-testid="stSlider"] div[data-baseweb="slider"] div[role="slider"] { background-color: #1d1d1f !important; border-color: #1d1d1f !important; }
+# ボタン類
+css += "button[kind='primary'] { background-color: #1d1d1f !important; color: #ffffff !important; border: none !important; border-radius: 24px !important; padding: 14px 24px !important; font-size: 16px !important; font-weight: 600 !important; transition: transform 0.2s ease; }\n"
+css += "button[kind='primary']:hover { opacity: 0.8; transform: scale(1.02); }\n"
+css += "button[kind='secondary'] { border-radius: 8px !important; border: 1px solid #d2d2d7 !important; background-color: #ffffff !important; color: #1d1d1f !important; }\n"
 
-    hr { margin: 40px 0; border-color: #e5e5ea; }
-    .section-title { font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 12px; margin-top: 32px; }
-    .helper-text { font-size: 13px; color: #86868b; margin-top: -10px; margin-bottom: 24px; }
-</style>
-""", unsafe_allow_html=True)
+# スライダー（スワイプバー）をグレーに
+css += "div[data-testid='stSlider'] div[data-baseweb='slider'] div[data-testid='stSliderTrack'] > div:first-child { background-color: #86868b !important; }\n"
+css += "div[data-testid='stSlider'] div[data-baseweb='slider'] div[role='slider'] { background-color: #1d1d1f !important; border-color: #1d1d1f !important; }\n"
+
+# フロントページの画像ボタン化
+css += "div[data-testid='column']:has(.m-front-sofa) button { background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url('https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; color: transparent !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; position: relative !important; }\n"
+css += "div[data-testid='column']:has(.m-front-sofa) button::after { content: 'SOFA'; color: white; font-size: 24px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }\n"
+css += "div[data-testid='column']:has(.m-front-dining) button { background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500&h=500') center/cover !important; color: transparent !important; aspect-ratio: 1/1 !important; border-radius: 16px !important; border: none !important; cursor: default !important; position: relative !important; }\n"
+css += "div[data-testid='column']:has(.m-front-dining) button::after { content: 'Coming Soon\\A DINING'; white-space: pre; text-align: center; color: white; font-size: 20px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }\n"
+
+# カメラ・アップロードボタン
+css += "div[data-testid='column']:has(.m-btn-cam) button { aspect-ratio: 1/1 !important; border-radius: 12px !important; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px !important; font-weight: 600 !important; color: #1d1d1f !important; }\n"
+
+# カラーブロックCSS生成
+def get_color_css(prefix, color_dict, has_no_change=False):
+    c = ""
+    if has_no_change:
+        c += f"div[data-testid='column']:has(.m-{prefix}-変更なし) button {{ background-color: #f5f5f7 !important; color: #1d1d1f !important; font-size: 11px !important; font-weight: 500 !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px dashed #d2d2d7 !important; padding: 0 !important; }}\n"
+    for n, h in color_dict.items():
+        c += f"div[data-testid='column']:has(.m-{prefix}-{n}) button {{ background-color: {h} !important; color: transparent !important; aspect-ratio: 1/1 !important; border-radius: 8px !important; border: 1px solid #e5e5ea !important; padding: 0 !important; }}\n"
+    return c
+
+css += get_color_css("FB", COLORS_FABRIC, True)
+css += get_color_css("LT", COLORS_LEATHER, True)
+css += get_color_css("WD", COLORS_WOOD, True)
+css += get_color_css("MT", COLORS_METAL, True)
+css += get_color_css("IN", COLORS_INT, False)
+
+# テイスト画像CSS生成
+for n, u in STYLES.items():
+    css += f"div[data-testid='column']:has(.m-ST-{n}) button {{ background: url('{u}') center/cover !important; color: transparent !important; aspect-ratio: 1/1 !important; border-radius: 12px !important; border: none !important; padding: 0 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important; }}\n"
+
+css += "hr { margin: 40px 0; border-color: #e5e5ea; }\n"
+css += ".section-title { font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 12px; margin-top: 32px; }\n"
+css += ".helper-text { font-size: 14px; color: #86868b; margin-top: -10px; margin-bottom: 24px; }\n"
+css += ".select-prompt { font-size: 16px; font-weight: 600; color: #1d1d1f; margin-bottom: 12px; margin-top: 8px; }\n" # 青文字を廃止
+css += "</style>\n"
+
+st.markdown(css, unsafe_allow_html=True)
 
 # --- API設定 ---
 try:
@@ -128,42 +164,59 @@ def crop_to_4_3_and_watermark(img):
         new_h = int(w / target_ratio)
         img = img.crop((0, (h - new_h) / 2, w, (h - new_h) / 2 + new_h))
     
+    # 1200x900にリサイズ
+    img = img.resize((1200, 900), Image.Resampling.LANCZOS)
+    
     draw = ImageDraw.Draw(img)
-    try: font = ImageFont.truetype("LiberationSans-Regular.ttf", int(img.height * 0.025)) 
+    # 透かしを3倍に (0.025 -> 0.075)
+    try: font = ImageFont.truetype("LiberationSans-Regular.ttf", int(img.height * 0.075)) 
     except: font = ImageFont.load_default()
+    
     bbox = draw.textbbox((0, 0), "HOTTA WOODWORKS-DX", font=font)
-    x, y = img.width - (bbox[2]-bbox[0]) - 20, img.height - (bbox[3]-bbox[1]) - 20
-    draw.text((x+1, y+1), "HOTTA WOODWORKS-DX", font=font, fill=(0,0,0,100))
-    draw.text((x, y), "HOTTA WOODWORKS-DX", font=font, fill=(255,255,255,220))
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x, y = img.width - tw - 30, img.height - th - 30
+    
+    draw.text((x+2, y+2), "HOTTA WOODWORKS-DX", font=font, fill=(0,0,0,120))
+    draw.text((x, y), "HOTTA WOODWORKS-DX", font=font, fill=(255,255,255,240))
     return img
 
 # --- セッション状態 ---
 if 'page' not in st.session_state: st.session_state.page = 'front'
 if 'gallery' not in st.session_state: st.session_state.gallery = [] 
 if 'auto_gen' not in st.session_state: st.session_state.auto_gen = False
-for k in ['fabric', 'frame', 'style', 'floor', 'wall', 'fitting', 'up_fab', 'up_frame']:
+if 'img_mode' not in st.session_state: st.session_state.img_mode = 'upload'
+
+# 張地とフレームは「変更なし」を初期値に
+for k in ['fabric', 'frame']:
+    if k not in st.session_state: st.session_state[k] = {"name": "変更なし", "val": "none", "type": "preset"}
+for k in ['style', 'floor', 'wall', 'fitting', 'up_fab', 'up_frame', 'cam_img']:
     if k not in st.session_state: st.session_state[k] = None
 
 def go_to(page_name):
     st.session_state.page = page_name
     st.session_state.gallery = []
-    for k in ['fabric', 'frame', 'style', 'floor', 'wall', 'fitting', 'up_fab', 'up_frame']:
+    for k in ['fabric', 'frame']:
+        st.session_state[k] = {"name": "変更なし", "val": "none", "type": "preset"}
+    for k in ['style', 'floor', 'wall', 'fitting', 'up_fab', 'up_frame', 'cam_img']:
         st.session_state[k] = None
     st.rerun()
 
-# --- 安全なUI部品関数 (重複エラー回避版) ---
-def render_color_grid(options_dict, state_key, unique_prefix):
+# --- UI部品関数 ---
+def render_grid(options_dict, prefix, state_key, include_no_change=False):
     items = list(options_dict.items())
+    if include_no_change:
+        items.insert(0, ("変更なし", "none"))
+    
+    # 1/4サイズ (4列)
     for i in range(0, len(items), 4):
         cols = st.columns(4)
         for j in range(4):
             if i + j < len(items):
-                name, color = items[i + j]
+                name, val = items[i + j]
                 with cols[j]:
-                    st.markdown(f'<div style="background-color:{color}; width:100%; aspect-ratio:1/1; border-radius:8px; border:1px solid #e5e5ea; margin-bottom:8px;"></div>', unsafe_allow_html=True)
-                    # 重複を防ぐためにunique_prefixを追加
-                    if st.button(name, key=f"btn_{state_key}_{unique_prefix}_{name}", use_container_width=True):
-                        st.session_state[state_key] = {"name": name, "val": color, "type": "preset"}
+                    st.markdown(f'<div class="m-{prefix}-{name}" style="display:none;"></div>', unsafe_allow_html=True)
+                    if st.button(name, key=f"btn_{prefix}_{name}_{i}_{j}", use_container_width=True):
+                        st.session_state[state_key] = {"name": name, "val": val, "type": "preset"}
                         st.rerun()
 
 def render_style_grid():
@@ -174,28 +227,39 @@ def render_style_grid():
             if i + j < len(items):
                 name, url = items[i + j]
                 with cols[j]:
-                    st.markdown(f'<div style="background-image:url({url}); background-size:cover; width:100%; aspect-ratio:1/1; border-radius:12px; margin-bottom:8px;"></div>', unsafe_allow_html=True)
-                    if st.button(name, key=f"btn_style_{name}", use_container_width=True):
+                    st.markdown(f'<div class="m-ST-{name}" style="display:none;"></div>', unsafe_allow_html=True)
+                    if st.button(name, key=f"btn_st_{name}", use_container_width=True):
                         st.session_state.style = {"name": name, "url": url, "type": "style"}
+                        # スタイル連動による初期値の自動設定
+                        defs = STYLE_DEFAULTS[name]
+                        st.session_state.floor = {"name": defs["floor"], "val": COLORS_INT[defs["floor"]], "type": "preset"}
+                        st.session_state.wall = {"name": defs["wall"], "val": COLORS_INT[defs["wall"]], "type": "preset"}
+                        st.session_state.fitting = {"name": defs["fitting"], "val": COLORS_INT[defs["fitting"]], "type": "preset"}
                         st.rerun()
+                    st.markdown(f"<p style='font-size:12px; text-align:center; color:#515154; margin-top:-10px;'>{name}</p>", unsafe_allow_html=True)
 
 def render_selected(label, selection, state_key):
     st.markdown(f"<div class='section-title'>{label}</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 3, 2])
     with c1:
-        if selection["type"] == "preset":
+        if selection["name"] == "変更なし":
+            st.markdown(f'<div style="background-color:#f5f5f7; width:100%; aspect-ratio:1/1; border-radius:8px; border:1px dashed #d2d2d7; display:flex; align-items:center; justify-content:center; font-size:10px; color:#1d1d1f;">変更なし</div>', unsafe_allow_html=True)
+        elif selection["type"] == "preset":
             st.markdown(f'<div style="background-color:{selection["val"]}; width:100%; aspect-ratio:1/1; border-radius:8px; border:1px solid #e5e5ea;"></div>', unsafe_allow_html=True)
         elif selection["type"] == "style":
             st.markdown(f'<div style="background-image:url({selection["url"]}); background-size:cover; width:100%; aspect-ratio:1/1; border-radius:8px;"></div>', unsafe_allow_html=True)
         else:
             st.markdown(f'<div style="background-color:#f5f5f7; width:100%; aspect-ratio:1/1; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#86868b; border:1px solid #e5e5ea;">画像</div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f"<p style='font-size:14px; margin-top:8px; font-weight:500;'>{selection['name']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size:14px; margin-top:8px;'>{selection['name']}</p>", unsafe_allow_html=True)
     with c3:
         if st.button("変更", key=f"chg_{state_key}"):
-            st.session_state[state_key] = None
-            if state_key == "floor": st.session_state.wall = st.session_state.fitting = None
-            elif state_key == "wall": st.session_state.fitting = None
+            if state_key in ['fabric', 'frame']:
+                st.session_state[state_key] = {"name": "変更なし", "val": "none", "type": "preset"}
+            else:
+                st.session_state[state_key] = None
+                if state_key == "floor": st.session_state.wall = st.session_state.fitting = None
+                elif state_key == "wall": st.session_state.fitting = None
             st.rerun()
 
 # ==========================================
@@ -206,11 +270,11 @@ if st.session_state.page == 'front':
     
     col1, col2 = st.columns(2)
     with col1:
-        st.image("https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&q=80&w=500&h=500", use_container_width=True)
-        if st.button("SOFA", use_container_width=True, type="primary"): go_to('sofa')
+        st.markdown('<div class="m-front-sofa" style="display:none;"></div>', unsafe_allow_html=True)
+        if st.button("FRONT_SOFA", key="f_sofa", use_container_width=True): go_to('sofa')
     with col2:
-        st.image("https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&q=80&w=500&h=500", use_container_width=True)
-        st.button("Coming Soon", use_container_width=True, disabled=True)
+        st.markdown('<div class="m-front-dining" style="display:none;"></div>', unsafe_allow_html=True)
+        st.button("FRONT_DINING", key="f_dining", disabled=True, use_container_width=True)
     
     st.divider()
     col_admin, _ = st.columns([1, 2])
@@ -224,22 +288,39 @@ elif st.session_state.page == 'sofa':
     st.markdown("<h2>家具の設定</h2>", unsafe_allow_html=True)
     st.markdown("<div class='helper-text'>ベースとなる家具の写真をアップロードし、各素材や空間のテイストを選択してください。</div>", unsafe_allow_html=True)
     
-    f_file = st.file_uploader("ベース画像", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
-    if f_file: st.image(f_file, width=150)
+    # --- ベース画像入力 ---
+    st.write("")
+    c_cam, c_up, _ = st.columns([1, 1, 2])
+    with c_cam:
+        st.markdown('<div class="m-btn-cam" style="display:none;"></div>', unsafe_allow_html=True)
+        if st.button("📷\n写真を撮る", key="btn_cam", use_container_width=True): st.session_state.img_mode = 'camera'
+    with c_up:
+        st.markdown('<div class="m-btn-cam" style="display:none;"></div>', unsafe_allow_html=True)
+        if st.button("📁\nアップロード", key="btn_up", use_container_width=True): st.session_state.img_mode = 'upload'
+    
+    st.write("")
+    f_file = None
+    if st.session_state.img_mode == 'camera':
+        cam_res = st.camera_input("写真を撮る", label_visibility="collapsed")
+        if cam_res: f_file = cam_res
+    else:
+        up_res = st.file_uploader("ベース画像", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
+        if up_res: f_file = up_res
+        
+    if f_file: st.image(f_file, width=200)
     
     st.divider()
 
     # --- 素材 ---
-    if not st.session_state.fabric:
+    if st.session_state.fabric["name"] == "変更なし":
         st.markdown("<div class='section-title'>張地</div>", unsafe_allow_html=True)
         t1, t2 = st.tabs(["布", "革"])
-        # 第3引数に一意なID(fab, lea)を渡すことで重複エラーを回避
-        with t1: render_color_grid(COLORS_FABRIC, "fabric", "fab")
-        with t2: render_color_grid(COLORS_LEATHER, "fabric", "lea")
+        with t1: render_grid(COLORS_FABRIC, "FB", "fabric", True)
+        with t2: render_grid(COLORS_LEATHER, "LT", "fabric", True)
         st.write("")
         up_fab = st.file_uploader("独自の画像をアップロード (張地)", type=["jpg", "png"], key="ufab", label_visibility="collapsed")
         if up_fab:
-            st.session_state.fabric = {"name": "独自アップロード画像", "val": up_fab, "type": "upload"}
+            st.session_state.fabric = {"name": "独自画像", "val": up_fab, "type": "upload"}
             st.session_state.up_fab = pil_to_b64(Image.open(up_fab))
             st.rerun()
     else:
@@ -247,15 +328,15 @@ elif st.session_state.page == 'sofa':
 
     st.write("")
     
-    if not st.session_state.frame:
+    if st.session_state.frame["name"] == "変更なし":
         st.markdown("<div class='section-title'>フレーム</div>", unsafe_allow_html=True)
         t3, t4 = st.tabs(["木材", "金属"])
-        with t3: render_color_grid(COLORS_WOOD, "frame", "wood")
-        with t4: render_color_grid(COLORS_METAL, "frame", "metal")
+        with t3: render_grid(COLORS_WOOD, "WD", "frame", True)
+        with t4: render_grid(COLORS_METAL, "MT", "frame", True)
         st.write("")
         up_frm = st.file_uploader("独自の画像をアップロード (フレーム)", type=["jpg", "png"], key="ufrm", label_visibility="collapsed")
         if up_frm:
-            st.session_state.frame = {"name": "独自アップロード画像", "val": up_frm, "type": "upload"}
+            st.session_state.frame = {"name": "独自画像", "val": up_frm, "type": "upload"}
             st.session_state.up_frame = pil_to_b64(Image.open(up_frm))
             st.rerun()
     else:
@@ -274,22 +355,22 @@ elif st.session_state.page == 'sofa':
 
     # --- 内装 ---
     if not st.session_state.floor:
-        st.markdown("<div class='section-title'>床</div>", unsafe_allow_html=True)
-        render_color_grid(COLORS_INT, "floor", "fl")
+        st.markdown("<div class='select-prompt'>床</div>", unsafe_allow_html=True)
+        render_grid(COLORS_INT, "IN", "floor")
     else:
         render_selected("床", st.session_state.floor, "floor")
 
     if st.session_state.floor:
         if not st.session_state.wall:
-            st.markdown("<div class='section-title'>壁</div>", unsafe_allow_html=True)
-            render_color_grid(COLORS_INT, "wall", "wa")
+            st.markdown("<div class='select-prompt'>壁</div>", unsafe_allow_html=True)
+            render_grid(COLORS_INT, "IN", "wall")
         else:
             render_selected("壁", st.session_state.wall, "wall")
 
     if st.session_state.wall:
         if not st.session_state.fitting:
-            st.markdown("<div class='section-title'>建具</div>", unsafe_allow_html=True)
-            render_color_grid(COLORS_INT, "fitting", "fi")
+            st.markdown("<div class='select-prompt'>建具</div>", unsafe_allow_html=True)
+            render_grid(COLORS_INT, "IN", "fitting")
         else:
             render_selected("建具", st.session_state.fitting, "fitting")
 
@@ -304,23 +385,24 @@ elif st.session_state.page == 'sofa':
     if gen_clicked or st.session_state.auto_gen:
         st.session_state.auto_gen = False
         if not f_file:
-            st.error("ベース画像をアップロードしてください。")
+            st.error("ベース画像を用意してください。")
         else:
             with st.spinner("AIで画像を生成しています..."):
                 try:
                     main_img = Image.open(f_file)
                     
-                    fab_p = st.session_state.fabric["name"] if st.session_state.fabric else "appropriate color"
-                    frame_p = st.session_state.frame["name"] if st.session_state.frame else "appropriate material"
+                    # プロンプトの組み立て
+                    fab_p = "" if st.session_state.fabric["name"] == "変更なし" else f"Upholstery: {st.session_state.fabric['name']}."
+                    frame_p = "" if st.session_state.frame["name"] == "変更なし" else f"Frame/Legs: {st.session_state.frame['name']}."
                     style_p = st.session_state.style["name"] if st.session_state.style else "modern"
                     floor_p = st.session_state.floor["name"] if st.session_state.floor else "matching"
                     wall_p = st.session_state.wall["name"] if st.session_state.wall else "matching"
                     fitting_p = st.session_state.fitting["name"] if st.session_state.fitting else "matching"
                     
                     prompt = f"""
-                    GENERATE_IMAGE: Create a highly realistic interior design photo. Aspect Ratio: 4:3.
+                    GENERATE_IMAGE: Create a highly realistic interior design photo.
                     Furniture: The sofa from the first attached image. Maintain exact shape.
-                    Upholstery: {fab_p}. Frame/Legs: {frame_p}.
+                    {fab_p} {frame_p}
                     Style: {style_p} interior.
                     Interior: Floor: {floor_p}, Walls: {wall_p}, Doors/Fittings: {fitting_p}.
                     """
@@ -342,12 +424,16 @@ elif st.session_state.page == 'sofa':
                                 
                     if gen_img:
                         final_img = crop_to_4_3_and_watermark(gen_img)
+                        desc_str = f"{style_p} / "
+                        desc_str += f"張地:{st.session_state.fabric['name']} / "
+                        desc_str += f"フレーム:{st.session_state.frame['name']}"
+                        
                         new_log = {
                             "id": str(time.time()),
                             "timestamp": time.time(),
                             "base_img_b64": pil_to_b64(main_img.copy()), 
                             "gen_img_b64": pil_to_b64(final_img),
-                            "desc": f"{style_p} / 張地:{fab_p} / フレーム:{frame_p}",
+                            "desc": desc_str,
                             "rating": 0, "action": "閲覧のみ"
                         }
                         st.session_state.gallery.append(new_log)
@@ -370,33 +456,32 @@ elif st.session_state.page == 'sofa':
         res = st.session_state.gallery[idx]
         display_img = b64_to_pil(res["gen_img_b64"])
         
-        c_img1, c_img2, c_img3 = st.columns([1, 4, 1])
-        with c_img2:
-            st.image(display_img, use_container_width=True)
-            st.caption(res["desc"])
-            
+        # 画面幅いっぱいに表示
+        st.image(display_img, use_container_width=True)
+        st.caption(res["desc"])
+        
+        st.write("")
+        st.markdown("<p style='text-align:center; font-weight:600; font-size:14px;'>画像を評価すると保存や再作成出来ます</p>", unsafe_allow_html=True)
+        
+        rating = st.radio("評価", [1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key=f"rate_{res['id']}")
+        
+        if rating is not None:
+            res["rating"] = rating
             st.write("")
-            st.markdown("<p style='text-align:center; font-weight:600; font-size:14px;'>画像を評価すると保存や再作成出来ます</p>", unsafe_allow_html=True)
-            
-            rating = st.radio("評価", [1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key=f"rate_{res['id']}")
-            
-            if rating is not None:
-                res["rating"] = rating
-                st.write("")
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    buf = io.BytesIO()
-                    display_img.save(buf, format="PNG")
-                    if st.download_button("保存", data=buf.getvalue(), file_name=f"room_ai_{int(time.time())}.png", mime="image/png", use_container_width=True):
-                        res["action"] = "保存"
-                        save_to_db(res)
-                        st.success("保存完了")
-                with col_b:
-                    if st.button("再作成", use_container_width=True, key=f"retry_{res['id']}"):
-                        res["action"] = "再作成"
-                        save_to_db(res)
-                        st.session_state.auto_gen = True
-                        st.rerun()
+            col_a, col_b = st.columns(2)
+            with col_a:
+                buf = io.BytesIO()
+                display_img.save(buf, format="PNG")
+                if st.download_button("保存", data=buf.getvalue(), file_name=f"room_ai_{int(time.time())}.png", mime="image/png", use_container_width=True):
+                    res["action"] = "保存"
+                    save_to_db(res)
+                    st.success("保存完了")
+            with col_b:
+                if st.button("再作成", use_container_width=True, key=f"retry_{res['id']}"):
+                    res["action"] = "再作成"
+                    save_to_db(res)
+                    st.session_state.auto_gen = True
+                    st.rerun()
 
     st.divider()
     if st.button("フロントページに戻る", use_container_width=True): go_to('front')
@@ -410,6 +495,10 @@ elif st.session_state.page == 'admin':
     
     if pw == "hotta-admin":
         st.write("")
+        # 「最新データを読み込む」ボタンを追加
+        if st.button("🔄 最新のデータを読み込む", use_container_width=True):
+            st.rerun()
+            
         history_data = load_from_db()
         
         if not history_data:
